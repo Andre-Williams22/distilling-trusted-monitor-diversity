@@ -216,3 +216,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Project specific
+# project-plan.md is deliberately TRACKED: it is the preregistration, and the
+# advance-commitment claims in it (promotion rule, consensus binning, primary
+# readout) are only credible against a timestamped commit predating results.
+
+# macOS
+.DS_Store
+
+# --- monitor-distillation project artifacts ---
+# Inputs and expensive intermediates: regenerable, large, live on the GPU box.
+data/
+# One directory per training or scoring run: adapters, checkpoints, logs.
+runs/
+
+# results/ is deliberately NOT ignored. It is small, final, and cited by the
+# write-up, so every number stays timestamped and attributable to a commit.
+!results/
