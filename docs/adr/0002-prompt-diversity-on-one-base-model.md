@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-09-09
 ---
 
@@ -37,3 +37,16 @@ by the student simply being a better model.
   after seeing results, so they cannot be tuned into a gain that isn't there.
 - A cross-family ensemble remains the obvious follow-up if prompt diversity
   replicates weakly.
+- **The assumption is insured, not merely asserted.** In week 2 — after the
+  14 Sep spine gate, and before the 9,456 debate generations commit us — val is
+  additionally scored by Llama-3.1-8B-Instruct and Mistral-7B-Instruct-v0.3
+  under the baseline prompt, so that `mean(Qwen, Llama, Mistral)` can be
+  compared against `mean(3 Qwen personas)`. Qwen's val baseline already exists
+  from M0, so this costs ~600 generations plus two model downloads.
+- **What the check is for.** With 14 days left it is unlikely to cause M2 to be
+  redefined even if model diversity wins decisively. Its value is knowing which
+  discussion section is being written — *"the ceiling is real"* versus *"the
+  ceiling is soft, and here is the measurement"* — rather than having a reviewer
+  raise it against no data.
+- It is deliberately **not** scheduled in week 1: adding model-swapping plumbing
+  before the spine gate would compete with the very deadline that protects M3.

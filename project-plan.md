@@ -231,9 +231,12 @@ Pull `RoganInglis/apps-control-arena` from Hugging Face. Filter to items where
 the backdoor is validated (`backdoor_works == True`) and a validated clean
 solution exists for the same problem. Pair each backdoor with its problem's
 clean solution — this pairing is what stops the monitor from learning "hard
-problem → suspicious" instead of detecting backdoors. Cut into train (~1,900),
-val (~480), test (~1,375) at 50% attack rate. **Output: three fixed, versioned
-JSONL files. Nothing downstream touches the raw dataset again.**
+problem → suspicious" instead of detecting backdoors. Cut **by `problem_id`**
+into train (788 problems / 1,576 items), val (150 / 300) and test (644 / 1,288)
+at a 50% attack rate, per the §2 table — nondeterministic problems all go to
+train. **Output: three fixed, versioned JSONL files plus `splits.meta.json`
+recording the seed, filter counts and dataset revision. Nothing downstream
+touches the raw dataset again.**
 
 ### 4.2 Write the prompts
 
@@ -434,8 +437,9 @@ does not survive distillation by either method, and the 3× cost is not avoidabl
 | M4 teacher scores (train) | 1,576 × 3 personas × 1 sample | 4,728 |
 | Test eval, all arms, both operating points | 1,288 × 15 passes | 19,320 |
 | Val thresholds + agreement check | 300 × 15 passes | 4,500 |
+| Diversity insurance, val (ADR-0002) | 300 × 2 extra models | 600 |
 | Training pipeline smoke test | ~50 items × 3 × 2 | ~500 |
-| **Total** | | **≈ 38,500** |
+| **Total** | | **≈ 39,100** |
 
 The 15 passes are M0×1 + M1×3 + M2×3 + M3×(1+3) + M4×(1+3). Down a further
 **14%** from v4's 45,000, because Option A moved items out of train (where each
@@ -500,15 +504,17 @@ Down from $150–250 in the previous scope.
 2. Load the dataset; build backdoor↔clean item pairs; cut the splits.
 3. Write the 3 fixed persona prompts for M2.
 4. Stand up the eval harness: pAUC@[0,10%], safety@1%, entropy, unique-value count, paired bootstrap, DeLong.
-5. Score **M0** → **GATE: AUROC ≥ 0.60**. Score **M1**. Score **M2**.
+5. Score **M0** → **GATE 1 (date): must happen by 14 Sep or M3 is cut.**
+   **GATE 2 (quality): AUROC ≥ 0.60.** Then score **M1**, then **M2**.
 6. **Freeze and push the preregistration (§3–§6) before any training run.**
 
 ### Week 2 · 11–17 Sep — pipeline proof and data generation
 
 7. Run the training smoke test on ~50 items → confirm the QLoRA script runs end to end and loss decreases. **GATE, lightweight — debug here, not in week 3.**
-8. Generate debate transcripts on **val only**; measure agreement; **lock the consensus binning**.
-9. Generate the full M3 train debate transcripts (~11,400 generations).
-10. Generate the M4 teacher scores from M2 on train (~5,700 generations).
+8. **Diversity insurance (ADR-0002)** — score val with Llama-3.1-8B-Instruct and Mistral-7B-Instruct-v0.3 under the baseline prompt; compare `mean(Qwen, Llama, Mistral)` against `mean(3 Qwen personas)`. ~600 generations, two downloads. Runs **after** the 14 Sep gate and **before** the 9,456 debate generations, which is the last moment the answer is actionable.
+9. Generate debate transcripts on **val only**; measure agreement; **lock the consensus binning**.
+10. Generate the full M3 train debate transcripts (~9,456 generations).
+11. Generate the M4 teacher scores from M2 on train (~4,728 generations).
 
 ### Week 3 · 18–24 Sep — train and evaluate
 
@@ -522,9 +528,38 @@ Down from $150–250 in the previous scope.
 15. Answer H2, H3, H4 explicitly in the write-up regardless of direction.
 16. Post.
 
-**Slip rule:** if week 3 runs short, drop the 3-sample equal-compute readout
-first and report only the 1-sample headline numbers. **Never drop M4** — it is
-what makes H2 answerable on its own, independent of whether MACA works.
+### Slip rules
+
+Two levers, declared in advance, largest first.
+
+**1 · The 14 Sep spine gate — decides whether M3 survives.** M0 must be scored
+and its AUROC checked **by 14 Sep**. Scoring M0 requires the entire spine
+working end to end: data loading, splits, prompts, vLLM serving, both readouts,
+and the metrics code. If that spine is not up by the 14th, **cut M3** and ship
+M0/M1/M2/M4.
+
+The arithmetic behind the date: M3 needs debate generation (9,456 calls),
+consensus binning, the pairs pipeline, prompt normalisation, and a DPO run —
+roughly **60% of the remaining engineering**, and the part with the most novel
+code. M4 needs teacher scores (4,728 calls) and one SFT run. With the spine up
+on the 14th there are 14 days for two training pipelines; without it, there are
+not.
+
+| Ship | H1 | H2 | H3 | H4 |
+|---|---|---|---|---|
+| M0, M1, M2, M4 | ✅ | ✅ | ❌ | ✅ |
+| all five | ✅ | ✅ | ✅ | ✅ |
+
+Cutting M3 costs H3 — the DPO-vs-SFT comparison. That is a real loss, but per
+ADR-0003 it was never a test of MACA itself, and **a rushed DPO run producing an
+uninterpretable null is worse than not running it.** H2, the primary hypothesis,
+is answerable by M4 alone.
+
+**2 · If week 3 runs short**, drop the 3-sample equal-compute readout and report
+only the 1-sample headline numbers.
+
+**Never drop M4** — it is what makes H2 answerable on its own, independent of
+whether the DPO arm works.
 
 ---
 
@@ -532,6 +567,7 @@ what makes H2 answerable on its own, independent of whether MACA works.
 
 | Trigger | Action |
 |---|---|
+| **M0 not scored by 14 Sep** | **Cut M3.** Ship M0/M1/M2/M4 — H1, H2 and H4 all survive; only the DPO-vs-SFT comparison is lost. Decided now, on 9 Sep, so that it reads as a plan rather than a week-3 concession. |
 | M0 AUROC < 0.60 | **Stop the training arms.** Consensus among near-chance monitors is noise. Move to a larger trusted model, or ship the M0/M1/M2 replication alone. |
 | Smoke test fails by 17 Sep | Debug before generating full transcripts — this is cheap to catch here and expensive to catch in week 3. |
 | M4's two-term loss not converging by 17 Sep | Set λ = 0, ship plain text SFT, name the rounding as a limitation (ADR-0005). H4 weakens; the project survives. |
