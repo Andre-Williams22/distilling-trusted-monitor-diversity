@@ -38,6 +38,14 @@ gpu = [
     "vllm>=0.6",
 ]
 
+# `uv sync --extra local` -- Apple Silicon only. Runs a quantised model
+# in-process for pilots and plumbing checks. 4-bit local scores are NOT
+# comparable to bf16 served scores, so an arm measured here cannot be compared
+# against an arm measured on the GPU box.
+local = [
+    "mlx-lm>=0.19",
+]
+
 dev = [
     "pytest>=8.3",
     "ruff>=0.6",

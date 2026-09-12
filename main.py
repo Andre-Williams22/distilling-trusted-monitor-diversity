@@ -57,6 +57,8 @@ def cmd_score(args: argparse.Namespace) -> int:
         split=args.split,
         adapter=args.adapter,
         resume=not args.no_resume,
+        backend_name=args.backend,
+        limit=args.limit,
     )
     print(f"scores -> {path}")
     return 0
@@ -68,14 +70,14 @@ def cmd_diversity_check(args: argparse.Namespace) -> int:
     Compares model diversity against prompt diversity before the debate
     generations commit us to the latter. Val only.
     """
-    from src.scoring import score_alternate_models
-
     from src import config
+    from src.scoring import score_alternate_models
 
     path = score_alternate_models(
         split=args.split,
         models=config.DIVERSITY_CHECK_MODELS,
         resume=not args.no_resume,
+        backend_name=args.backend,
     )
     print(f"scores -> {path}")
     return 0
@@ -103,7 +105,9 @@ def cmd_teacher_scores(args: argparse.Namespace) -> int:
     """Generate M4's regression targets: the personas' unrounded mean score."""
     from src.scoring import build_teacher_scores
 
-    path = build_teacher_scores(split=args.split, resume=not args.no_resume)
+    path = build_teacher_scores(
+        split=args.split, resume=not args.no_resume, backend_name=args.backend
+    )
     print(f"targets -> {path}")
     return 0
 
@@ -152,6 +156,19 @@ def build_parser() -> argparse.ArgumentParser:
         sub.set_defaults(handler=handler)
         return sub
 
+    def add_backend_flag(sub: argparse.ArgumentParser) -> None:
+        sub.add_argument(
+            "--backend",
+            default="vllm",
+            choices=("vllm", "mlx"),
+            help=(
+                "Where to send requests. 'vllm' is the served CUDA box; 'mlx' "
+                "runs a quantised model in-process on Apple Silicon, for "
+                "pilots only -- 4-bit local scores are NOT comparable to bf16 "
+                "served scores."
+            ),
+        )
+
     def add_resume_flag(sub: argparse.ArgumentParser) -> None:
         sub.add_argument(
             "--no-resume",
@@ -173,6 +190,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to a LoRA adapter. Required for m3 and m4, ignored otherwise.",
     )
+    sub.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Score only the first N items. For pilots; writes a separate file.",
+    )
+    add_backend_flag(sub)
     add_resume_flag(sub)
 
     sub = add(
@@ -181,6 +205,7 @@ def build_parser() -> argparse.ArgumentParser:
         "Score with Llama and Mistral to compare model vs prompt diversity.",
     )
     sub.add_argument("--split", default="val", choices=SPLIT_CHOICES)
+    add_backend_flag(sub)
     add_resume_flag(sub)
 
     sub = add("debate", cmd_debate, "Run the two-round persona debate.")
@@ -200,6 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = add("teacher-scores", cmd_teacher_scores, "Generate M4's targets.")
     sub.add_argument("--split", default="train", choices=SPLIT_CHOICES)
+    add_backend_flag(sub)
     add_resume_flag(sub)
 
     sub = add("train-sft", cmd_train_sft, "Train M4.")
