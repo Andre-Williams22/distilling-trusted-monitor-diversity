@@ -19,6 +19,7 @@ killed instance loses the in-flight request rather than the run.
 
 from __future__ import annotations
 
+import math
 import json
 import re
 import urllib.error
@@ -46,6 +47,10 @@ from src.config import (
 )
 from src.data import Item, SplitName, load_split
 from src.utils import append_jsonl, completed_ids, get_logger, write_jsonl
+
+import mlx.core as mx
+from mlx_lm import stream_generate
+from mlx_lm.sample_utils import make_sampler
 
 logger = get_logger(__name__)
 
@@ -213,8 +218,6 @@ class MLXBackend:
         Returns:
             One ``Generation`` per sample.
         """
-        from mlx_lm import stream_generate
-        from mlx_lm.sample_utils import make_sampler
 
         chat = self.tokenizer.apply_chat_template(
             [{"role": "user", "content": prompt}],
@@ -248,7 +251,6 @@ class MLXBackend:
         Returns:
             The completed generation.
         """
-        import mlx.core as mx
 
         text_parts: list[str] = []
         tokens: list[str] = []
@@ -449,7 +451,6 @@ def _probability_mass(
     Returns:
         Total probability, zero if none are present.
     """
-    import math
 
     return sum(
         math.exp(candidates[spelling])

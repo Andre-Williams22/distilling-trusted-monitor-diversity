@@ -235,3 +235,8 @@ runs/
 # results/ is deliberately NOT ignored. It is small, final, and cited by the
 # write-up, so every number stays timestamped and attributable to a commit.
 !results/
+
+# uv.lock is kept locally to regenerate a cross-platform requirements.txt
+# (`uv lock && uv export`), but the repo installs with plain pip and does not
+# need it. requirements.txt is the committed, pinned artifact.
+uv.lock

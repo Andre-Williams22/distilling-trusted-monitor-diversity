@@ -6,53 +6,47 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 
-# Core: everything both the laptop and the GPU box need.
+# One dependency list. Environment markers do the platform work, so
+# `pip install -r requirements.txt` installs the right thing on every machine
+# and there are no extras to remember.
+#
+# vllm and bitsandbytes have NO macOS wheels, so a flat unmarked list would
+# fail on Apple Silicon. torch/transformers/trl/peft are marked Linux-only too,
+# not because they cannot install on a Mac but because nothing on a Mac uses
+# them -- the local pilot runs through MLX -- and they are hundreds of MB.
 dependencies = [
+    # Core: needed everywhere.
     "datasets>=4.0",
     "huggingface-hub>=0.34",
     "numpy>=1.26",
     "pandas>=2.2",
     "pyarrow>=17.0",
     "tqdm>=4.66",
-]
 
-[project.optional-dependencies]
-# `uv sync --extra data` — runs on the arm64 Mac. No CUDA anywhere in here.
-# Everything through split construction, plus all metrics, stats and figures.
-data = [
+    # Analysis: splits, metrics, statistics, figures. Pure CPU, runs anywhere.
     "matplotlib>=3.9",
     "scikit-learn>=1.5",
     "scipy>=1.14",
-]
 
-# `uv sync --extra gpu` — the rented A6000 only. None of this installs on
-# Apple Silicon, which is exactly why the tiers are split: a single dependency
-# list would fail `uv sync` on the laptop on day one.
-gpu = [
-    "accelerate>=1.0",
-    "bitsandbytes>=0.44",
-    "peft>=0.13",
-    "torch>=2.4",
-    "transformers>=4.45",
-    "trl>=0.11",
-    "vllm>=0.6",
-]
-
-# `uv sync --extra local` -- Apple Silicon only. Runs a quantised model
-# in-process for pilots and plumbing checks. 4-bit local scores are NOT
-# comparable to bf16 served scores, so an arm measured here cannot be compared
-# against an arm measured on the GPU box.
-local = [
-    "mlx-lm>=0.19",
-]
-
-dev = [
+    # Development.
     "pytest>=8.3",
     "ruff>=0.6",
+
+    # Serving and training. Linux + CUDA only.
+    "accelerate>=1.0 ; sys_platform == 'linux'",
+    "bitsandbytes>=0.44 ; sys_platform == 'linux'",
+    "peft>=0.13 ; sys_platform == 'linux'",
+    "torch>=2.4 ; sys_platform == 'linux'",
+    "transformers>=4.45 ; sys_platform == 'linux'",
+    "trl>=0.11 ; sys_platform == 'linux'",
+    "vllm>=0.6 ; sys_platform == 'linux'",
+
+    # Local pilot scoring. Apple Silicon only.
+    "mlx-lm>=0.19 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 # Deliberately absent: control-arena. Only its dataset is used, pulled straight
-# from Hugging Face. See docs/adr/0004-*.md — it drags in 33 dependencies
+# from Hugging Face. See docs/adr/0004-*.md -- it drags in 33 dependencies
 # (docker, kubernetes-asyncio, minio, redis, flask) and pins
 # huggingface-hub~=0.33, which would fight vllm/transformers/trl on the GPU box.
 
