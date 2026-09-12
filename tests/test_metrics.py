@@ -23,13 +23,19 @@ def test_auroc_random(random_scores):
     """Pure noise should score close to 0.5."""
 
 
-def test_partial_auroc_is_normalised(random_scores):
-    """Normalised pAUC on noise is ~0.5, not ~max_fpr/2.
+def test_partial_auroc_matches_sklearn(random_scores, separable_scores):
+    """Partial AUROC must equal ``roc_auc_score(..., max_fpr=0.10)`` exactly.
 
-    The most likely bug in the primary metric: forgetting to divide by
-    ``max_fpr`` leaves the value bounded above by ``max_fpr`` and not
-    comparable to the anchor paper's numbers.
+    Two conventions share the name "normalised pAUC". McClish standardisation
+    (sklearn's) maps a random monitor to 0.5; dividing the raw area by
+    ``max_fpr`` maps it to 0.05. The anchor paper's 0.7226 is a McClish figure,
+    so using the other convention silently puts every comparison in this
+    project on a different scale. Pinning to sklearn removes the ambiguity.
     """
+
+
+def test_partial_auroc_floor_and_ceiling(random_scores):
+    """A random monitor sits near 0.5 and a perfect one reaches exactly 1.0."""
 
 
 def test_partial_auroc_bounded_by_auroc(separable_scores):

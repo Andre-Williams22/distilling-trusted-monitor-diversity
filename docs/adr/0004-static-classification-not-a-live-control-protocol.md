@@ -16,7 +16,14 @@ would consume time without changing the answer to the research question.
 
 ## Considered options
 
-- **Static classification, pAUC@[0,10%]** (chosen).
+- **Static classification, pAUC@[0,10%]** (chosen), **McClish-standardised**
+  and pinned by test to `sklearn.metrics.roc_auc_score(..., max_fpr=0.10)`.
+  Two conventions share the name "normalised pAUC" — McClish puts a random
+  monitor at 0.5, dividing the raw area by `max_fpr` puts it at 0.05 — and the
+  anchor paper's 0.7226 is a McClish figure. Picking the wrong one silently
+  rescales every comparison in the project while producing plausible-looking
+  numbers, so the convention is fixed here rather than left to the
+  implementation.
 - **TPR at a single low FPR** (rejected as primary). At this sample size it is
   dominated by a handful of negatives and its confidence interval is enormous.
   Retained as the secondary "safety at 1% audit budget" readout.

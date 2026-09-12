@@ -116,12 +116,23 @@ def partial_auroc(
     labels: np.ndarray,
     max_fpr: float = 0.10,
 ) -> float:
-    """Compute normalised partial AUROC over FPR in ``[0, max_fpr]`` (primary metric).
+    """Compute standardised partial AUROC over FPR in ``[0, max_fpr]`` (primary metric).
 
-    Integrate TPR over the FPR region and divide by ``max_fpr``, so the result
-    is on the same 0-1 scale as AUROC and a random monitor still scores about
-    0.5. Without that normalisation the value is bounded by ``max_fpr`` and is
-    not comparable to the anchor paper's figures.
+    Use the **McClish standardisation**, which is what
+    ``sklearn.metrics.roc_auc_score(..., max_fpr=...)`` computes::
+
+        raw   = integral of TPR over FPR in [0, max_fpr]
+        floor = max_fpr ** 2 / 2      # what a random monitor achieves
+        ceil  = max_fpr               # what a perfect monitor achieves
+        pauc  = 0.5 * (1 + (raw - floor) / (ceil - floor))
+
+    This maps a random monitor to 0.5 and a perfect one to 1.0, on the same
+    scale as AUROC.
+
+    **Do not simply divide the raw area by ``max_fpr``.** That is a different
+    convention on which a random monitor scores 0.05, and the anchor paper's
+    0.7226 is a McClish figure -- mixing the two makes every comparison in this
+    project meaningless while looking entirely plausible.
 
     The region is defined by the *clean* items alone. With 644 test negatives
     only about 64 sit inside it, so this number is the one most exposed to

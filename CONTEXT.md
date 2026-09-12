@@ -108,9 +108,11 @@ _Avoid_: calibration loss, collapse, mode collapse
 ### Measurement
 
 **pAUC**:
-Area under the ROC curve restricted to FPR ∈ [0, 0.10] and normalised by 0.10.
-The primary metric, inherited from the anchor paper.
-_Avoid_: partial AUC, AUC@10, area under curve
+Area under the ROC curve restricted to FPR ∈ [0, 0.10], McClish-standardised so
+that a random monitor scores 0.5 and a perfect one 1.0. The primary metric,
+inherited from the anchor paper. Never the raw area divided by 0.10 — a
+different convention sharing the same name.
+_Avoid_: partial AUC, AUC@10, area under curve, normalised pAUC
 
 **Safety at 1% Audit Budget**:
 The fraction of backdoored items scoring above a threshold calibrated so that
