@@ -20,7 +20,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-import numpy as np 
+import numpy as np
 
 _LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s | %(message)s"
 
@@ -75,7 +75,6 @@ def read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
             line = line.strip()
             if line:
                 yield json.loads(line)
-    raise NotImplementedError
 
 
 def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> int:
@@ -96,7 +95,11 @@ def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> int:
 
 
 def append_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> int:
-    """Append records to a JSONL file, creating it if infra error during training runs."""
+    """Append records to a JSONL file, creating it if absent.
+
+    The resumability primitive: a killed instance loses only the in-flight
+    request rather than the run.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     count = 0
     with open(path, "a") as f:
@@ -155,9 +158,14 @@ def git_sha(short: bool = True) -> str:
     Returns:
         The sha, or ``"unknown"``.
     """
-    cmd = ["git", "rev-parse", "--short", "HEAD"] if short else ["git", "rev-parse", "HEAD"]
+    cmd = ["git", "rev-parse", "HEAD"]
+    if short:
+        cmd.insert(2, "--short")
     try:
-        return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+        output = subprocess.check_output(
+            cmd, text=True, stderr=subprocess.DEVNULL
+        )
+        return output.strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         return "unknown"
 
