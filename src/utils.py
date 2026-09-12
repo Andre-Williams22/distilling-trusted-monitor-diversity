@@ -7,13 +7,22 @@ module that uses it, not here.
 
 from __future__ import annotations
 
-import json, os, tempfile 
+import hashlib
+import json
 import logging
-import hashlib 
-import subprocess 
+import os
+import random
+import subprocess
+import sys
+import tempfile
 from collections.abc import Iterable, Iterator
+from datetime import date
 from pathlib import Path
 from typing import Any
+
+import numpy as np 
+
+_LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s | %(message)s"
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -29,20 +38,20 @@ def get_logger(name: str) -> logging.Logger:
     Returns:
         A logger writing to stderr at INFO level.
     """
-    raise NotImplementedError
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt="%H:%M:%S"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+    return logger
 
 
 def set_seed(seed: int) -> None:
-    """Seed every random source that could affect a result.
-
-    Covers ``random`` and ``numpy``. Deliberately does **not** touch torch —
-    the training modules own their own seeding, and importing torch here would
-    make this module unimportable on the laptop.
-
-    Args:
-        seed: The seed to apply.
-    """
-    raise NotImplementedError
+    """Seed every random source that could affect a result."""
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 def read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
@@ -61,66 +70,59 @@ def read_jsonl(path: Path) -> Iterator[dict[str, Any]]:
     Raises:
         FileNotFoundError: If the path does not exist.
     """
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
     raise NotImplementedError
 
 
 def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> int:
-    """Write records to a JSONL file, replacing anything already there.
-
-    Creates parent directories as needed. Writes to a temporary file and moves
-    it into place, so an interrupted write never leaves a half-file that a
-    later stage would silently treat as complete.
-
-    Args:
-        path: Destination file.
-        records: Objects to serialise, one per line.
-
-    Returns:
-        How many records were written.
-    """
+    """Write records to a JSONL file, replacing anything already there."""
     path.parent.mkdir(parents=True, exist_ok=True)
     count = 0
-    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    with os.fdopen(fd, "w") as f:
-        for record in records:
-            f.write(json.dumps(record) + "\n")
-            count += 1
-    os.replace(tmp, path)   # atomic on POSIX
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            for record in records:
+                f.write(json.dumps(record) + "\n")
+                count += 1
+        os.replace(tmp_path, path)
+    except BaseException:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
     return count
 
 
 def append_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> int:
-    """Append records to a JSONL file, creating it if absent.
-
-    This is the resumability primitive. Generation jobs run for hours on
-    interruptible instances; appending each completed result immediately means
-    a killed instance costs only the in-flight request rather than the run.
-
-    Args:
-        path: Destination file.
-        records: Objects to append, one per line.
-
-    Returns:
-        How many records were appended.
-    """
-    raise NotImplementedError
+    """Append records to a JSONL file, creating it if infra error during training runs."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with open(path, "a") as f:
+        for record in records:
+            f.write(json.dumps(record) + "\n")
+            f.flush()
+            count += 1
+    return count
 
 
 def completed_ids(path: Path, id_field: str = "item_id") -> set[str]:
-    """Read back which records a partially-finished job already produced.
+    """Read back which records a partially-finished job already produced."""
+    if not path.exists():
+        return set()
+    done: set[str] = set()
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                done.add(json.loads(line)[id_field])
+            except (json.JSONDecodeError, KeyError):
+                continue  # a torn final line from a killed instance
+    return done
 
-    Lets a resumed generation stage skip work it has already paid for. Returns
-    an empty set when the file does not exist, so callers need no special case
-    for a first run.
-
-    Args:
-        path: The JSONL file a previous attempt was appending to.
-        id_field: Field holding the identifier to collect.
-
-    Returns:
-        Every value of ``id_field`` found in the file.
-    """
-    raise NotImplementedError
 
 
 def stable_hash(value: str, length: int = 8) -> str:
@@ -153,12 +155,10 @@ def git_sha(short: bool = True) -> str:
     Returns:
         The sha, or ``"unknown"``.
     """
-    cmd = ["git", "rev-parse", "--short" if short else "HEAD"]
-    if short:
-        cmd = ["git", "rev-parse", "--short", "HEAD"]
+    cmd = ["git", "rev-parse", "--short", "HEAD"] if short else ["git", "rev-parse", "HEAD"]
     try:
         return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
-    except Exception:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return "unknown"
 
 
@@ -176,4 +176,10 @@ def run_dir(arm: str, root: Path | None = None) -> Path:
     Returns:
         The created directory.
     """
-    raise NotImplementedError
+    from src.config import RUNS_DIR
+
+    base = root if root is not None else RUNS_DIR
+    path = base / f"{date.today():%Y-%m-%d}__{arm}__{git_sha()}"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+

@@ -110,10 +110,6 @@ def load_raw(config: DatasetConfig) -> Iterable[dict[str, Any]]:
     return ds 
 
 
-
-
-
-
 def select_working_backdoor(row: dict[str, Any]) -> dict[str, Any] | None:
     """Pick a validated backdoor from a row's ``backdoors`` list.
 
