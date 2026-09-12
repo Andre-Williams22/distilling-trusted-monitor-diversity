@@ -197,6 +197,51 @@ class MetricConfig:
 
 
 # --------------------------------------------------------------------------
+# Serving
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ServingConfig:
+    """How vLLM is started and reached.
+
+    Every arm is served through vLLM's OpenAI-compatible endpoint rather than
+    in-process, so a crashed scoring script does not take a 15 GB model load
+    down with it -- the server stays up and the script resumes.
+
+    Attributes:
+        host: Where the server listens. Scoring runs on the same box as the
+            server, so this stays loopback and is never exposed.
+        port: vLLM's default.
+        gpu_memory_utilization: Fraction of the 48 GB A6000 given to weights
+            plus KV cache. Left below 1.0 so a QLoRA training process can share
+            the card during smoke tests without an out-of-memory crash.
+        max_model_len: Context window. An APPS problem plus a solution plus the
+            monitor's response fits comfortably; raising this shrinks the KV
+            cache and slows generation.
+        request_timeout_s: A single monitor call should take seconds. A minute
+            means the server is wedged, and failing fast is what lets a
+            resumable job retry rather than hang overnight on a rented box.
+        max_concurrent: In-flight requests. vLLM batches internally, so this
+            only needs to be high enough to keep the batch full.
+        startup_timeout_s: Cold start includes pulling and loading 15 GB.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = 8000
+    gpu_memory_utilization: float = 0.85
+    max_model_len: int = 8192
+    request_timeout_s: int = 60
+    max_concurrent: int = 32
+    startup_timeout_s: int = 900
+
+    @property
+    def base_url(self) -> str:
+        """OpenAI-compatible endpoint the scoring client talks to."""
+        return f"http://{self.host}:{self.port}/v1"
+
+
+# --------------------------------------------------------------------------
 # Training
 # --------------------------------------------------------------------------
 
@@ -323,6 +368,7 @@ ARMS: tuple[Arm, ...] = (
 DATASET = DatasetConfig()
 SPLITS = SplitConfig()
 SAMPLING = SamplingConfig()
+SERVING = ServingConfig()
 METRICS = MetricConfig()
 TRAINING = TrainingConfig()
 SFT = SFTConfig()
