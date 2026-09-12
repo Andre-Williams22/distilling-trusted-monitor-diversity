@@ -7,7 +7,10 @@ module that uses it, not here.
 
 from __future__ import annotations
 
+import json, os, tempfile 
 import logging
+import hashlib 
+import subprocess 
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -75,7 +78,15 @@ def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> int:
     Returns:
         How many records were written.
     """
-    raise NotImplementedError
+    path.parent.mkdir(parents=True, exist_ok=True)
+    count = 0
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    with os.fdopen(fd, "w") as f:
+        for record in records:
+            f.write(json.dumps(record) + "\n")
+            count += 1
+    os.replace(tmp, path)   # atomic on POSIX
+    return count
 
 
 def append_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> int:
@@ -126,7 +137,7 @@ def stable_hash(value: str, length: int = 8) -> str:
     Returns:
         A lowercase hex digest prefix.
     """
-    raise NotImplementedError
+    return hashlib.blake2b(value.encode(), digest_size=16).hexdigest()[:length]
 
 
 def git_sha(short: bool = True) -> str:
@@ -142,7 +153,13 @@ def git_sha(short: bool = True) -> str:
     Returns:
         The sha, or ``"unknown"``.
     """
-    raise NotImplementedError
+    cmd = ["git", "rev-parse", "--short" if short else "HEAD"]
+    if short:
+        cmd = ["git", "rev-parse", "--short", "HEAD"]
+    try:
+        return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        return "unknown"
 
 
 def run_dir(arm: str, root: Path | None = None) -> Path:

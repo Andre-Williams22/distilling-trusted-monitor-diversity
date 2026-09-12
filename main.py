@@ -37,11 +37,6 @@ ARM_CHOICES = ("m0", "m1", "m2", "m3", "m4")
 SPLIT_CHOICES = ("train", "val", "test")
 
 
-# --------------------------------------------------------------------------
-# Handlers — one per stage. Each is a thin shim over src/.
-# --------------------------------------------------------------------------
-
-
 def cmd_build_data(args: argparse.Namespace) -> int:
     """Load, filter, pair and split the dataset into three frozen JSONL files."""
     from src import config
@@ -138,11 +133,7 @@ def cmd_analyse(args: argparse.Namespace) -> int:
         "stats.py and figures.py are implemented."
     )
 
-
-# --------------------------------------------------------------------------
-# Parser
-# --------------------------------------------------------------------------
-
+# ArgParser 
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level parser and every subcommand."""

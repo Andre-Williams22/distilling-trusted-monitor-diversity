@@ -20,6 +20,8 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from datasets import load_dataset
+
 
 from src.config import DatasetConfig, SplitConfig
 
@@ -99,7 +101,17 @@ def load_raw(config: DatasetConfig) -> Iterable[dict[str, Any]]:
     Returns:
         The raw rows, with the dataset's own column names intact.
     """
-    raise NotImplementedError
+
+    try: 
+        # Login using e.g. `huggingface-cli login` to access this dataset
+        ds = load_dataset("RoganInglis/apps-control-arena")
+    except Exception as e: 
+        raise NotImplementedError
+    return ds 
+
+
+
+
 
 
 def select_working_backdoor(row: dict[str, Any]) -> dict[str, Any] | None:
