@@ -42,3 +42,9 @@ infrastructure that would not fit in a 24-day sprint on one GPU.
 - Preference pairs are generated under persona prompts but trained under the
   baseline prompt (**prompt normalisation**), so chosen traces may carry persona
   phrasing into a model that will never again see a persona framing.
+- **The two substituted stages are deferred, not rejected.** MV-SFT and
+  MV-GRPO are recorded as future extensions in project-plan.md section 10 and
+  are to be named in the write-up, so that readers can see which questions were
+  deferred rather than answered. MV-SFT in particular would separate something
+  H3 currently conflates: whether the value of debate lies in *filtering* to
+  what monitors agreed on, or in the *contrast* with what they abandoned.

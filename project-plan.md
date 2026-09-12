@@ -595,6 +595,68 @@ whether the DPO arm works.
 
 ---
 
+## 10. Future extensions
+
+Scoped out of the 24-day sprint, and worth naming explicitly in the write-up so
+that readers know which questions were *deferred* rather than *answered*.
+
+### The two remaining MACA stages
+
+M3 uses MACA's data pipeline — multi-agent debate, consensus extraction — with
+DPO substituted for MACA's own training objectives (ADR-0003). Both of the
+substituted stages are natural follow-ups, and together they would turn "we
+adapted MACA" into "we tested MACA."
+
+**MV-SFT — MACA's first stage.** Fine-tune on the majority-consistent
+trajectories alone, discarding dissent. Cheaper than DPO and strictly more
+faithful to the paper. Run alongside M3 and M4 it makes a clean three-way
+decomposition that this project cannot currently separate:
+
+| Arm | Data | Target | Isolates |
+|---|---|---|---|
+| M4 | all train items | ensemble mean score | distilling the ensemble's *output* |
+| MV-SFT | consensus items only | the winning trajectory | distilling the ensemble's *agreement* |
+| M3 (DPO) | consensus + dissent pairs | preference between them | distilling the ensemble's *disagreement* |
+
+The open question it answers: does the value of debate come from **filtering** to
+what the monitors agreed on, or from the **contrast** with what they abandoned?
+This project's H3 conflates the two — M3 beating M4 could be either.
+
+**MV-GRPO — MACA's second stage.** Reinforcement learning with consensus-derived
+rewards, on top of MV-SFT. This is the only configuration that constitutes an
+actual test of MACA on a monitoring task; everything here is an adaptation. It
+needs an online rollout loop — generate, score against consensus, update, repeat
+— which is why it does not fit one rented GPU in 24 days rather than why it was
+judged unpromising.
+
+**Say this plainly in the write-up.** A null H3 is evidence about DPO on
+consensus-derived pairs. It is *not* evidence that MACA fails at monitoring,
+and the paper should refuse that inference before a reader draws it.
+
+### Other deferred questions
+
+**Cross-family ensemble diversity (ADR-0002).** M2's diversity comes from three
+persona prompts over one base model. The anchor paper's headline +13% came from
+architecturally *different* models, and its identical-model row was only +5.5%.
+The week-2 val-only check measures the gap; actually rebuilding M2 from Qwen,
+Llama and Mistral — and distilling a cross-family ensemble into a single Qwen —
+is the stronger version of the whole claim.
+
+**Live control protocol evaluation (ADR-0004).** Everything here is static
+classification over pre-labelled items. The trajectory-level safety number from
+the AI control literature — where an attacker chooses which tasks to attack
+across a deployment and unaudited actions pass through untouched — requires
+simulating episodes under an attack strategy. A distilled monitor that preserves
+pAUC may or may not preserve *deployment* safety, and nothing measured here
+settles it.
+
+**Attack-strength sensitivity (ADR-0001).** Backdoors come pre-generated from a
+fixed distribution, so attack difficulty is not a variable under our control.
+Whether distillation survives *harder* attacks than the ones it was trained to
+catch is untested, and is the question an adversary would ask first.
+
+---
+
 ## References
 
 - Ensemble Monitoring for AI Control — [arXiv:2605.15377](https://arxiv.org/html/2605.15377v2) — primary anchor
