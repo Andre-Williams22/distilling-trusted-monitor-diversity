@@ -1,0 +1,5 @@
+# Lockfiles and exports are generated, never hand-edited. Marking them keeps
+# them out of diffs and collapsed on GitHub, without giving up the
+# reproducibility they provide.
+uv.lock            linguist-generated=true -diff merge=ours
+requirements/*.txt linguist-generated=true -diff
