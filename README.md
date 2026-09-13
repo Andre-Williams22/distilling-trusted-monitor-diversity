@@ -124,7 +124,7 @@ python main.py debate --split train              # M3's transcripts
 python main.py build-pairs
 python main.py train-sft                         # M4
 python main.py train-dpo                         # M3
-python main.py analyse
+python main.py analyse --split test                     # report.md + charts
 ```
 
 `python main.py --help` lists every stage.
@@ -135,7 +135,7 @@ python main.py analyse
 |---|---|---|
 | `data/` | ignored | splits, raw generations, derived training files |
 | `runs/` | ignored | one dir per run: `DATE__arm__githash/` with adapter, logs, config |
-| `results/` | **committed** | scores tables, `hypotheses.csv`, figures |
+| `results/<split>/` | **committed** | `report.md`, `summary.csv`, `comparisons.csv`, `hypotheses.csv`, `figures/*.png` |
 
 `results/` is committed on purpose: it is a few hundred KB and it is what the
 write-up cites, so every reported number stays timestamped and attributable to

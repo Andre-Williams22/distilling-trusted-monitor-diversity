@@ -55,7 +55,8 @@ src/                 # flat package (__init__.py present so `from src.x import y
   train_dpo.py       #   M3
   metrics.py         #   pAUC, safety@1%, entropy, unique-value count
   stats.py           #   DeLong, paired bootstrap
-  figures.py         #   the frontier plot
+  analysis.py        #   summary/comparison tables, hypotheses, report.md
+  figures.py         #   per-arm ROC + score charts, all-arms ROC, frontier
 prompts/             # baseline.txt, persona_*.txt — versioned plain text
 tests/               # run on the Mac, no GPU required
 ```
@@ -66,7 +67,7 @@ tests/               # run on the Mac, no GPU required
 |---|---|---|---|
 | `data/` | ignored | GPU box | splits, raw generations, derived training files |
 | `runs/` | ignored | GPU box | one dir per run: `DATE__arm__githash/` with adapter, checkpoints, logs, resolved config |
-| `results/` | **committed** | repo | scores tables, `hypotheses.csv`, figures |
+| `results/<split>/` | **committed** | repo | `report.md`, summary/comparison/hypothesis CSVs, `figures/*.png` |
 
 `results/` is committed on purpose: it is a few hundred KB, it is what the
 write-up cites, and keeping it in history makes every reported number

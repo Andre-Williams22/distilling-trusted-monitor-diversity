@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from collections.abc import Sequence
 
 ARM_CHOICES = ("m0", "m1", "m2", "m3", "m4")
@@ -131,13 +132,15 @@ def cmd_train_dpo(args: argparse.Namespace) -> int:
 
 
 def cmd_analyse(args: argparse.Namespace) -> int:
-    """Compute every metric, test H1-H4, and build the frontier plot."""
-    raise NotImplementedError(
-        "Analysis orchestration lives in src/; wire it here once metrics.py, "
-        "stats.py and figures.py are implemented."
-    )
+    """Compute metrics, test the hypotheses, draw figures and write the report."""
+    from src.analysis import run_analysis
 
-# ArgParser 
+    report = run_analysis(
+        split=args.split, limit=args.limit, resamples=args.resamples
+    )
+    print(f"report -> {report}")
+    return 0
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level parser and every subcommand."""
@@ -247,15 +250,48 @@ def build_parser() -> argparse.ArgumentParser:
     sub = add("train-dpo", cmd_train_dpo, "Train M3.")
     sub.add_argument("--smoke", action="store_true", help="Run on ~50 items.")
 
-    add("analyse", cmd_analyse, "Compute metrics, test H1-H4, build figures.")
+    sub = add(
+        "analyse", cmd_analyse, "Compute metrics, draw figures, write the report."
+    )
+    sub.add_argument("--split", default="val", choices=SPLIT_CHOICES)
+    sub.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Analyse the files a `score --limit N` run wrote.",
+    )
+    sub.add_argument(
+        "--resamples",
+        type=int,
+        default=None,
+        help="Bootstrap draws (default 10,000). Lower it for a quick look.",
+    )
 
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Parse arguments and dispatch to the selected stage."""
+    """Parse arguments, run the selected stage, and report how long it took.
+
+    The timing line prints even when the stage fails or is interrupted, so a
+    crashed overnight run still says how far it got.
+    """
+    from datetime import datetime
+
+    from src.utils import format_duration
+
     args = build_parser().parse_args(argv)
-    return args.handler(args)
+    started_at = datetime.now()
+    started = time.perf_counter()
+    try:
+        return args.handler(args)
+    finally:
+        elapsed = time.perf_counter() - started
+        print(
+            f"\n[{args.command}] started {started_at:%Y-%m-%d %H:%M:%S} · "
+            f"finished {datetime.now():%H:%M:%S} · took {format_duration(elapsed)}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

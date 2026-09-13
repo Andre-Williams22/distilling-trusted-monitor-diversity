@@ -128,6 +128,77 @@ def completed_ids(path: Path, id_field: str = "item_id") -> set[str]:
 
 
 
+def read_json_records(path: Path) -> list[dict[str, Any]]:
+    """Read a JSON file holding a list of records.
+
+    Generation outputs are ``.json`` arrays so they open readably in an editor.
+    A missing file is an empty list, so a first run needs no special case.
+
+    Args:
+        path: File to read.
+
+    Returns:
+        The records, in file order. Empty if the file does not exist.
+
+    Raises:
+        ValueError: If the file exists but does not hold a JSON list.
+    """
+    if not path.exists():
+        return []
+    with open(path) as f:
+        records = json.load(f)
+    if not isinstance(records, list):
+        kind = type(records).__name__
+        raise ValueError(f"{path} should hold a JSON list, got {kind}")
+    return records
+
+
+def write_json_records(path: Path, records: list[dict[str, Any]]) -> int:
+    """Write a list of records as one indented JSON array, atomically.
+
+    Scoring rewrites the whole file after every item, since a JSON array cannot
+    be appended to the way JSONL can. Writing to a temporary file and renaming
+    it into place means a run killed mid-write leaves the previous complete
+    file untouched, so resuming stays safe.
+
+    Args:
+        path: Destination file.
+        records: Records to write.
+
+    Returns:
+        How many records were written.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(records, f, indent=2)
+            f.write("\n")
+        os.replace(tmp_path, path)
+    except BaseException:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+    return len(records)
+
+
+def format_duration(seconds: float) -> str:
+    """Render an elapsed time for humans.
+
+    Args:
+        seconds: Elapsed wall-clock seconds.
+
+    Returns:
+        ``"4.3s"``, ``"13m 02s"`` or ``"1h 04m 12s"``, depending on length.
+    """
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, secs = divmod(int(round(seconds)), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    return f"{minutes}m {secs:02d}s"
+
+
 def stable_hash(value: str, length: int = 8) -> str:
     """Hash a string deterministically across processes and machines.
 

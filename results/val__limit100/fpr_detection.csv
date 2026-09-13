@@ -1,0 +1,2 @@
+rank,arm,inference_cost,calls_per_1000_items,pauc,threshold_set_on,recall_at_1pct_fpr,realised_fpr_1pct,recall_at_2pct_fpr,realised_fpr_2pct,recall_at_5pct_fpr,realised_fpr_5pct,recall_at_10pct_fpr,realised_fpr_10pct
+1,m0,1,1000,0.7916,same items,0.54,0.02,0.56,0.02,0.64,0.06,0.76,0.1

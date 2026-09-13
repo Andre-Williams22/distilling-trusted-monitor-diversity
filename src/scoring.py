@@ -13,15 +13,17 @@ Both readouts are recorded on every call (ADR-0006):
   formatting does not read as "less suspicious".
 - **text** (secondary) -- the integer after ``SUSPICION:``.
 
-Every stage appends one JSONL row per (item, sample) as it completes, so a
-killed instance loses the in-flight request rather than the run.
+Every stage writes one record per (item, sample) to a ``.json`` array in
+``data/generations/``, rewriting the file atomically after each item. A killed
+run keeps every finished item and resumes from there.
 """
 
 from __future__ import annotations
 
-import math
 import json
+import math
 import re
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterable, Sequence
@@ -29,6 +31,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+
+import mlx.core as mx
+from mlx_lm import stream_generate
+from mlx_lm.sample_utils import make_sampler
 
 from src.config import (
     ARMS,
@@ -46,11 +52,13 @@ from src.config import (
     ServingConfig,
 )
 from src.data import Item, SplitName, load_split
-from src.utils import append_jsonl, completed_ids, get_logger, write_jsonl
-
-import mlx.core as mx
-from mlx_lm import stream_generate
-from mlx_lm.sample_utils import make_sampler
+from src.utils import (
+    format_duration,
+    get_logger,
+    read_json_records,
+    write_json_records,
+    write_jsonl,
+)
 
 logger = get_logger(__name__)
 
@@ -96,6 +104,8 @@ class Backend(Protocol):
     """
 
     max_concurrency: int
+    name: str
+    model_id: str
 
     def generate(
         self,
@@ -132,6 +142,8 @@ class VLLMBackend:
         self.model = adapter or model
         self.serving = serving
         self.max_concurrency = serving.max_concurrent
+        self.name = "vllm"
+        self.model_id = self.model
 
     def generate(
         self, prompt: str, n: int, sampling: SamplingConfig
@@ -204,6 +216,8 @@ class MLXBackend:
 
         self.model, self.tokenizer = load(model)
         self.max_concurrency = 1
+        self.name = "mlx"
+        self.model_id = model
 
     def generate(
         self, prompt: str, n: int, sampling: SamplingConfig
@@ -218,7 +232,6 @@ class MLXBackend:
         Returns:
             One ``Generation`` per sample.
         """
-
         chat = self.tokenizer.apply_chat_template(
             [{"role": "user", "content": prompt}],
             add_generation_prompt=True,
@@ -251,7 +264,6 @@ class MLXBackend:
         Returns:
             The completed generation.
         """
-
         text_parts: list[str] = []
         tokens: list[str] = []
         logprobs: list[dict[str, float]] = []
@@ -451,7 +463,6 @@ def _probability_mass(
     Returns:
         Total probability, zero if none are present.
     """
-
     return sum(
         math.exp(candidates[spelling])
         for spelling in spellings
@@ -477,6 +488,9 @@ class ScoreRecord:
         finish_reason: For spotting truncation.
         response: The full text, kept so a parsing change can be re-run without
             paying for generation again.
+        backend: ``"mlx"`` or ``"vllm"``. Reports print it, because 4-bit local
+            scores and bf16 served scores are not comparable.
+        model: The model id that produced the score.
     """
 
     item_id: str
@@ -489,6 +503,8 @@ class ScoreRecord:
     text_score: int | None
     finish_reason: str
     response: str
+    backend: str
+    model: str
 
 
 def score_items(
@@ -501,30 +517,38 @@ def score_items(
     sampling: SamplingConfig = SAMPLING,
     resume: bool = True,
 ) -> Path:
-    """Score every item with one template, appending results as they land.
+    """Score every item with one template, saving after each item.
 
-    Items already present in ``out_path`` are skipped when resuming, so a
-    killed instance costs one in-flight request rather than the run.
+    The output is a JSON array. It cannot be appended to, so the whole file is
+    rewritten after every item -- atomically, so a run killed mid-write leaves
+    the last complete file in place. At ~2.6 s per generation the rewrite is
+    negligible.
+
+    One file can hold several templates (M2 writes its three personas to one
+    file), so rows are always loaded and kept for *other* templates. With
+    ``resume=False`` only this template's rows are dropped and regenerated.
 
     Args:
         items: Items to score.
         template_path: Which prompt to use.
         backend: Where to send the requests.
         arm: Arm id, recorded on every row.
-        out_path: JSONL file to append to.
+        out_path: ``.json`` file holding the records.
         n_samples: Samples per item.
         sampling: Decoding settings.
-        resume: Skip items already in the output file.
+        resume: Skip items this template has already scored.
 
     Returns:
         ``out_path``.
     """
     prompt_name = template_path.stem
-    done = completed_ids(out_path) if resume else set()
-    if resume and not out_path.exists():
-        logger.info("no existing output at %s; starting fresh", out_path)
+    records = read_json_records(out_path)
+    _refuse_mixed_backends(records, backend, out_path)
+    if not resume:
+        records = [row for row in records if row.get("prompt_name") != prompt_name]
 
-    pending = [item for item in items if f"{item.item_id}::{prompt_name}" not in done]
+    done = {row["item_id"] for row in records if row.get("prompt_name") == prompt_name}
+    pending = [item for item in items if _record_id(item, prompt_name) not in done]
     logger.info(
         "%s/%s: %d items to score (%d already done), %d sample(s) each",
         arm,
@@ -540,7 +564,7 @@ def score_items(
         return [
             asdict(
                 ScoreRecord(
-                    item_id=item.item_id,
+                    item_id=_record_id(item, prompt_name),
                     problem_id=item.problem_id,
                     label=item.label,
                     arm=arm,
@@ -550,25 +574,105 @@ def score_items(
                     text_score=parse_text_score(generation.text),
                     finish_reason=generation.finish_reason,
                     response=generation.text,
+                    backend=getattr(backend, "name", "unknown"),
+                    model=getattr(backend, "model_id", "unknown"),
                 )
             )
             for index, generation in enumerate(generations)
         ]
 
+    started = time.perf_counter()
     completed = 0
     with ThreadPoolExecutor(max_workers=backend.max_concurrency) as pool:
         for rows in pool.map(score_one, pending):
-            # The composite id is what `resume` checks, so it must be written
-            # even though ScoreRecord keys on item_id alone.
-            for row in rows:
-                row["item_id"] = f"{row['item_id']}::{prompt_name}"
-            append_jsonl(out_path, rows)
+            # All samples for an item land in one write, so a kill can never
+            # leave an item half-scored and then skip it on resume.
+            records.extend(rows)
+            write_json_records(out_path, records)
             completed += 1
             if completed % 50 == 0:
-                logger.info("  %d/%d", completed, len(pending))
+                _log_progress(completed, len(pending), time.perf_counter() - started)
 
-    logger.info("wrote %s", out_path)
+    elapsed = time.perf_counter() - started
+    per_item = elapsed / completed if completed else 0.0
+    logger.info(
+        "%s/%s: scored %d items in %s (%.2f s/item) -> %s",
+        arm,
+        prompt_name,
+        completed,
+        format_duration(elapsed),
+        per_item,
+        out_path,
+    )
     return out_path
+
+
+def _refuse_mixed_backends(
+    records: Sequence[dict[str, Any]], backend: Backend, out_path: Path
+) -> None:
+    """Stop a run from adding scores to a file made by a different backend.
+
+    A pilot on the Mac and the real run on the GPU write to the same file name.
+    Without this check, the GPU run would resume from the pilot file, skip
+    every item already scored in 4-bit, and silently produce a mixed file whose
+    numbers match neither setup.
+
+    Args:
+        records: What the output file already holds.
+        backend: The backend about to score.
+        out_path: The output file, named in the error.
+
+    Raises:
+        ValueError: If the file holds scores from another backend.
+    """
+    current = getattr(backend, "name", None)
+    existing = {row["backend"] for row in records if row.get("backend")}
+    if current is None or not existing or existing == {current}:
+        return
+    tag = "_".join(sorted(existing))
+    pilot_name = out_path.with_name(f"{out_path.stem}__{tag}.json")
+    raise ValueError(
+        f"{out_path.name} already holds scores from {', '.join(sorted(existing))}, "
+        f"but this run uses {current}. Scores from different backends are not "
+        f"comparable and must not share a file. Move the old file aside first:\n"
+        f"  mv {out_path} {pilot_name}"
+    )
+
+
+def _record_id(item: Item, prompt_name: str) -> str:
+    """Build the id a record is stored and resumed under.
+
+    Includes the template name, so M2's three personas scoring the same item
+    are three distinct records rather than one overwriting another.
+
+    Args:
+        item: The item scored.
+        prompt_name: The template's file stem.
+
+    Returns:
+        ``"<item_id>::<prompt_name>"``.
+    """
+    return f"{item.item_id}::{prompt_name}"
+
+
+def _log_progress(completed: int, total: int, elapsed: float) -> None:
+    """Log progress with a rate and a rough time remaining.
+
+    Args:
+        completed: Items finished so far.
+        total: Items in this run.
+        elapsed: Seconds since the run started.
+    """
+    per_item = elapsed / completed
+    remaining = per_item * (total - completed)
+    logger.info(
+        "  %d/%d · %s elapsed · %.2f s/item · ~%s left",
+        completed,
+        total,
+        format_duration(elapsed),
+        per_item,
+        format_duration(remaining),
+    )
 
 
 def _arm_by_name(name: str) -> Arm:
@@ -630,7 +734,7 @@ def score_arm(
         logger.info("limited to the first %d items of %s", len(items), split)
     backend = get_backend(backend_name, adapter=adapter)
     suffix = f"__limit{limit}" if limit is not None else ""
-    out_path = GENERATIONS_DIR / f"{arm}__{split}{suffix}.jsonl"
+    out_path = GENERATIONS_DIR / f"{arm}__{split}{suffix}.json"
 
     for template_path in config.prompts:
         score_items(
@@ -667,7 +771,7 @@ def score_alternate_models(
         The JSONL file written.
     """
     items = load_split(split)
-    out_path = GENERATIONS_DIR / f"diversity_check__{split}.jsonl"
+    out_path = GENERATIONS_DIR / f"diversity_check__{split}.json"
 
     for model in models:
         backend = get_backend(backend_name, model=model)
@@ -705,7 +809,7 @@ def build_teacher_scores(
     """
     items = load_split(split)
     backend = get_backend(backend_name)
-    raw_path = GENERATIONS_DIR / f"teacher__{split}.jsonl"
+    raw_path = GENERATIONS_DIR / f"teacher__{split}.json"
 
     for template_path in PERSONA_PROMPTS:
         score_items(
@@ -727,7 +831,7 @@ def aggregate_teacher_scores(raw_path: Path, out_path: Path) -> Path:
     """Average the three personas' scores per item into one training target.
 
     Args:
-        raw_path: The per-persona score file.
+        raw_path: The per-persona ``.json`` score file.
         out_path: Where to write the aggregated targets.
 
     Returns:
@@ -735,13 +839,11 @@ def aggregate_teacher_scores(raw_path: Path, out_path: Path) -> Path:
     """
     from collections import defaultdict
 
-    from src.utils import read_jsonl
-
     logprobs: dict[str, list[float]] = defaultdict(list)
     texts: dict[str, list[int]] = defaultdict(list)
     meta: dict[str, dict[str, Any]] = {}
 
-    for row in read_jsonl(raw_path):
+    for row in read_json_records(raw_path):
         item_id = row["item_id"].split("::")[0]
         meta[item_id] = {"problem_id": row["problem_id"], "label": row["label"]}
         if row["logprob_score"] is not None:
