@@ -9,7 +9,8 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/Andre-Williams22/distilling-trusted-monitor-diversity.git"
-REPO_DIR="$HOME/dtmd"
+# The repo lives directly in the home directory, not in a subfolder.
+REPO_DIR="$HOME"
 MODEL="Qwen/Qwen2.5-7B-Instruct"
 
 # SHA-256 prefixes of the splits built on the laptop. A mismatch means the
@@ -23,9 +24,15 @@ declare -A EXPECTED_SPLIT_HASH=(
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
 step "System packages"
-if ! command -v tmux >/dev/null || ! command -v git >/dev/null || ! command -v rsync >/dev/null; then
-  apt-get update -qq && apt-get install -y -qq tmux git curl rsync >/dev/null
+# build-essential is required, not optional: vLLM compiles GPU kernels with
+# torch.compile/Triton on first start, and without gcc the engine dies with
+# "Failed to find C compiler" after the model has already downloaded.
+if ! command -v tmux >/dev/null || ! command -v git >/dev/null \
+   || ! command -v rsync >/dev/null || ! command -v gcc >/dev/null \
+   || ! command -v ninja >/dev/null; then
+  apt-get update -qq && apt-get install -y -qq tmux git curl rsync build-essential ninja-build >/dev/null
 fi
+gcc --version | head -1
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
 
 step "uv (fast installer; the project itself installs from requirements.txt)"
@@ -35,12 +42,17 @@ fi
 export PATH="$HOME/.local/bin:$PATH"
 
 step "Code"
-if [ -d "$REPO_DIR/.git" ]; then
-  git -C "$REPO_DIR" pull --ff-only
-else
-  git clone -q "$REPO_URL" "$REPO_DIR"
-fi
 cd "$REPO_DIR"
+if [ -d .git ]; then
+  git pull --ff-only
+else
+  # git clone refuses a non-empty directory, and home always holds dotfiles,
+  # so initialise in place and check out main over it.
+  git init -q
+  git remote add origin "$REPO_URL"
+  git fetch -q origin main
+  git checkout -q -f -B main origin/main
+fi
 git log --oneline -n 1
 
 step "Python 3.12 environment from requirements.txt"
@@ -64,13 +76,23 @@ done
 step "vLLM server (tmux session 'vllm')"
 mkdir -p logs
 if ! tmux has-session -t vllm 2>/dev/null; then
+  # VLLM_USE_FLASHINFER_SAMPLER=0: FlashInfer's sampler JIT-compiles CUDA
+  # kernels on first use, which needs ninja and nvcc, and the image has neither.
+  # PyTorch's sampler draws from the same distribution, and the P(yes) readout
+  # comes from the logprobs, not from the sampler, so scores are unaffected.
   tmux new-session -d -s vllm \
-    ".venv/bin/vllm serve $MODEL --port 8000 --gpu-memory-utilization 0.85 \
-     --max-model-len 8192 --max-logprobs 20 2>&1 | tee logs/vllm.log"
+    "VLLM_USE_FLASHINFER_SAMPLER=0 .venv/bin/vllm serve $MODEL --port 8000 \
+     --gpu-memory-utilization 0.85 --max-model-len 8192 --max-logprobs 20 \
+     2>&1 | tee logs/vllm.log"
 fi
 printf 'waiting for the server (first start downloads ~15 GB)'
 for _ in $(seq 1 180); do
   if curl -fs localhost:8000/health >/dev/null 2>&1; then echo " ready"; break; fi
+  if ! tmux has-session -t vllm 2>/dev/null; then
+    echo; echo "vLLM exited during startup. Last lines of logs/vllm.log:" >&2
+    grep -E "Error|error" logs/vllm.log | tail -5 >&2
+    exit 1
+  fi
   printf '.'; sleep 5
 done
 curl -fs localhost:8000/health >/dev/null || { echo "vLLM did not come up; see logs/vllm.log" >&2; exit 1; }
@@ -87,4 +109,4 @@ assert readable == len(rows), "readouts failed to parse -- do not start the real
 PY
 rm -f data/generations/m0__val__limit4.json
 
-step "Ready. Start the real run with: tmux new -s run 'bash infra/vast/run_untrained_arms.sh'"
+step "Ready. Start the real run with: cd ~ && tmux new -d -s run 'bash infra/vast/run_untrained_arms.sh' && tmux switch-client -t run"

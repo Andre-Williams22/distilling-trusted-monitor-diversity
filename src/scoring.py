@@ -32,10 +32,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-import mlx.core as mx
-from mlx_lm import stream_generate
-from mlx_lm.sample_utils import make_sampler
-
 from src.config import (
     ARMS,
     BASE_MODEL,
@@ -232,6 +228,12 @@ class MLXBackend:
         Returns:
             One ``Generation`` per sample.
         """
+        # Imported here, never at module level: MLX exists only on Apple
+        # Silicon, and a top-level import makes this whole module unimportable
+        # on the Linux GPU box even when the vLLM backend is the one in use.
+        from mlx_lm import stream_generate
+        from mlx_lm.sample_utils import make_sampler
+
         chat = self.tokenizer.apply_chat_template(
             [{"role": "user", "content": prompt}],
             add_generation_prompt=True,
@@ -264,6 +266,8 @@ class MLXBackend:
         Returns:
             The completed generation.
         """
+        import mlx.core as mx
+
         text_parts: list[str] = []
         tokens: list[str] = []
         logprobs: list[dict[str, float]] = []

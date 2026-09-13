@@ -84,17 +84,178 @@ paying another cold start on resume.
 
 ### GPU run on vast.ai
 
-Three scripts in `infra/vast/` cover the whole round trip:
+The full round trip, split by where each command runs. Replace every
+`UPPERCASE_PLACEHOLDER` with the real value. **Don't type angle brackets:**
+zsh reads `<` as a file redirect and fails with `parse error near '\n'`.
 
-| Where | Command | Does |
+`vastai` is not installed globally; every command runs it through `uvx`, which
+fetches it on demand.
+
+#### 1. On the laptop, once per machine
+
+```bash
+# API key. This repo's .env stores it as fastai_key.
+uvx vastai set api-key "$(sed -n 's/^fastai_key=//p' .env)"
+chmod 600 ~/.config/vastai/vast_api_key
+
+# Register the SSH public key the VM will accept.
+uvx vastai create ssh-key "$(cat ~/.ssh/arena_key.pub)"
+```
+
+#### 2. On the laptop, at the start of every session
+
+**Log in with 2FA.** The account requires it, and the API key alone returns
+`401 ... requires you to have logged in using Two Factor Authentication`.
+Use whichever method the account was set up with:
+
+```bash
+# Email: the first command prints a secret, and the code arrives by email.
+uvx vastai tfa send-email
+uvx vastai tfa login --method-type email --secret SECRET_FROM_TERMINAL -c CODE_FROM_EMAIL
+
+# Authenticator app: the 6-digit code shown for Vast.ai
+uvx vastai tfa login --method-type totp -c CODE_FROM_APP
+
+chmod 600 ~/.config/vastai/vast_tfa_key
+```
+
+**Rent a GPU.** Search for 48 GB cards whose driver supports CUDA 13:
+
+```bash
+uvx vastai search offers \
+  'gpu_name=L40S num_gpus=1 rentable=true reliability>0.99 cuda_vers>=13.0 disk_space>=200 inet_down>200' \
+  -o dph
+# RTX_A6000 also works; use gpu_name=RTX_A6000.
+
+uvx vastai create instance OFFER_ID \
+  --image nvidia/cuda:12.8.1-devel-ubuntu22.04 --disk 200 --ssh --direct \
+  --label monitor-distillation
+```
+
+> **CUDA 13 is required.** The pinned torch ships CUDA 13 libraries, which need
+> driver ≥ 580. An offer listing CUDA 12.8 rents fine and then fails at the
+> first model load.
+
+**Wait for it to boot, then get its address:**
+
+```bash
+uvx vastai show instances              # wait until STATUS says running (a few minutes)
+uvx vastai ssh-url INSTANCE_ID         # prints ssh://root@HOST:PORT
+```
+
+**Connect.** Use the host and port from `ssh-url`, which is the direct address.
+The `ssh3.vast.ai` proxy address listed in `show instances` can reject the key
+for the first few minutes.
+
+```bash
+ssh -i ~/.ssh/arena_key -p PORT root@HOST
+```
+
+#### Reconnecting to a VM that already exists
+
+If the instance is already rented, skip renting and just reconnect. Log in
+with 2FA if the session has expired, find your instance's address, and SSH in.
+The `tmux attach` puts you back inside a run that was left going.
+
+```bash
+uvx vastai show instances                      # note the ID of the running instance
+uvx vastai ssh-url INSTANCE_ID                 # prints ssh://root@HOST:PORT
+ssh -i ~/.ssh/arena_key -p PORT root@HOST      # connect
+tmux ls                                        # on the VM: list sessions (run, vllm)
+tmux switch-client -t run                      # rejoin the scoring run (you land inside vast's auto-tmux)
+```
+
+#### 3. On the VM
+
+**Set up once per instance.** This installs everything, verifies the data and
+starts the model server. It takes roughly 10–20 minutes, mostly downloading
+dependencies and the ~15 GB model.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Andre-Williams22/distilling-trusted-monitor-diversity/main/infra/vast/remote_setup.sh -o remote_setup.sh
+bash remote_setup.sh
+```
+
+What `infra/vast/remote_setup.sh` does, in order:
+
+| Step | Command | Why |
 |---|---|---|
-| VM | `bash infra/vast/remote_setup.sh` | installs the env, rebuilds and **hash-checks** the splits, starts vLLM in tmux, smoke-tests 4 items |
-| VM | `tmux new -s run 'bash infra/vast/run_untrained_arms.sh'` | M1 → M0 (derived) → M2 on val then test, then `analyse` for both |
-| laptop | `bash infra/vast/pull_results.sh` | copies `results/`, `data/generations/` and `logs/` back |
+| System packages | `apt-get install tmux git curl rsync build-essential ninja-build` | tmux keeps runs alive after SSH drops; rsync brings results home; **gcc is required** because vLLM compiles GPU kernels on first start |
+| Installer | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | uv, used only as a faster pip |
+| Code | `git init` + `git checkout origin/main` directly in `~` | the code lives in the home directory, not a subfolder; it's the pushed `main`, so push before renting |
+| Environment | `uv venv --python 3.12 .venv` then `uv pip install -r requirements.txt` | the same file as the laptop; Linux markers pull in vllm, torch and CUDA 13 |
+| Data | `python main.py build-data`, then SHA-256 checks | stops if the splits differ by a single byte from the laptop's |
+| Model server | `VLLM_USE_FLASHINFER_SAMPLER=0 vllm serve Qwen/Qwen2.5-7B-Instruct --port 8000 --gpu-memory-utilization 0.85 --max-model-len 8192 --max-logprobs 20` in tmux session `vllm` | waits until `localhost:8000/health` answers |
+| Smoke test | `python main.py score --arm m0 --split val --limit 4` | stops unless all 4 items produce both readouts |
 
-The host driver must support CUDA 13 (driver ≥ 580): the pinned torch uses
-CUDA 13 libraries, so an offer showing CUDA 12.8 will fail at the first model
-load. Search with `cuda_vers>=13.0`.
+It ends with `Ready.` Anything else means a step failed; the message says which.
+
+**Start the real run** in its own tmux session, so it survives a dropped
+connection. vast.ai already puts you inside tmux when you log in (the
+"auto-tmux" banner), so create the session detached with `-d`; a plain
+`tmux new` fails with `sessions should be nested with care`.
+
+```bash
+cd ~
+curl -fs localhost:8000/health && echo "vLLM ok"               # server must be up
+tmux new -d -s run 'bash infra/vast/run_untrained_arms.sh'     # start in the background
+tmux switch-client -t run                                      # jump in to watch
+```
+
+`infra/vast/run_untrained_arms.sh` scores M1, derives M0 from M1's first
+sample, and scores M2, on val first and then test (test thresholds come from
+val). It then runs `analyse` for both splits. Every step resumes, so after an
+interruption the same command finishes only the remaining items.
+
+**While it runs:**
+
+| To | Do |
+|---|---|
+| Leave it running and disconnect | `exit`; the `run` session keeps going |
+| Come back to it | `ssh -i ~/.ssh/arena_key -p PORT root@HOST`, then `tmux switch-client -t run` |
+| Go back to your login shell | `Ctrl-b` then `s`, and pick the other session |
+| Watch progress without attaching | `tail -f ~/logs/run_untrained_*.log` (prints s/item and time left every 50 items) |
+| Check the model server | `tmux switch-client -t vllm`, or `curl localhost:8000/health` |
+| Check the GPU | `nvidia-smi` |
+
+It's finished when the log's last line reads
+`Done. From the laptop: bash infra/vast/pull_results.sh`.
+
+#### 4. Back on the laptop
+
+```bash
+# Bring results/, data/generations/ and logs/ home
+VAST_SSH_KEY=~/.ssh/arena_key bash infra/vast/pull_results.sh INSTANCE_ID
+
+```
+
+Only when the pull prints **`Pulled and verified. Safe to destroy`**, destroy
+the instance. Run it as its own command, after reading the pull output:
+destroying deletes the VM's disk, and nothing on it can be recovered.
+
+```bash
+# Stop paying. vast.ai keeps charging for a stopped instance's disk, so destroy it.
+uvx vastai destroy instance INSTANCE_ID
+uvx vastai show instances              # confirm nothing is left running
+```
+
+Then open `results/test/report.md`.
+
+#### Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `zsh: parse error near '\n'` | Angle brackets were typed literally. Use the real value with no `<` `>` |
+| `zsh: command not found: vastai` | Run it as `uvx vastai …` |
+| `401 … Two Factor Authentication` | The 2FA session is missing or expired; repeat the login in step 2 |
+| `Permission denied (publickey)` | Use the direct address from `uvx vastai ssh-url`, pass `-i ~/.ssh/arena_key`, or wait a minute for the key to reach a new instance |
+| `CUDA driver version is insufficient` | The offer's driver is older than CUDA 13. Destroy it and rent one with `cuda_vers>=13.0` |
+| `… already holds scores from mlx, but this run uses vllm` | A 4-bit laptop file is in the way. Move it to `data/generations/mlx_pilot/` |
+| `Failed to find C compiler` in `logs/vllm.log` | The image has no gcc. `apt-get install -y build-essential`, then re-run `bash remote_setup.sh` |
+| `No such file or directory: 'ninja'` from `flashinfer/jit` | FlashInfer's sampler tries to compile CUDA kernels. Start vLLM with `VLLM_USE_FLASHINFER_SAMPLER=0`, as `remote_setup.sh` now does |
+| `sessions should be nested with care, unset $TMUX to force` | vast.ai's auto-tmux is already running. Start with `tmux new -d -s run …` and join with `tmux switch-client -t run` |
+| `rsync: unrecognized option '--info=stats1'` | An old copy of `pull_results.sh`; macOS's openrsync rejects GNU options. Update the script. **Don't destroy the instance until the pull verifies** |
+| `SPLIT MISMATCH` during setup | The dataset or split code changed. Don't score anything until the splits match |
 
 ### Local pilot (Apple Silicon)
 

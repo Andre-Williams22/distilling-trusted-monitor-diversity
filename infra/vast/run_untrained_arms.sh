@@ -2,7 +2,8 @@
 # The real scoring run for the untrained arms, on the GPU box. Run ON THE VM,
 # inside tmux so it survives a dropped SSH connection:
 #
-#   cd ~/dtmd && tmux new -s run 'bash infra/vast/run_untrained_arms.sh'
+#   cd ~ && tmux new -d -s run 'bash infra/vast/run_untrained_arms.sh'
+#   tmux switch-client -t run    # vast.ai logs you into tmux already, hence -d
 #
 # Order matters:
 #   1. val before test -- test thresholds are set on val.
@@ -10,7 +11,7 @@
 # Every scoring step resumes, so re-running after an interruption only does
 # the remaining items. The whole log is kept in logs/.
 set -euo pipefail
-cd "$HOME/dtmd"
+cd "$HOME"
 mkdir -p logs
 exec > >(tee -a "logs/run_untrained_$(date +%Y%m%d_%H%M%S).log") 2>&1
 

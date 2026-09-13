@@ -5,6 +5,10 @@
 #   bash infra/vast/pull_results.sh            # uses the first running instance
 #   bash infra/vast/pull_results.sh 12345678   # or a specific instance id
 #
+# If the key registered with vast.ai is not your default SSH key, point at it:
+#
+#   VAST_SSH_KEY=~/.ssh/arena_key bash infra/vast/pull_results.sh
+#
 # Only results/ and data/generations/ travel back; the model weights and the
 # environment stay on the box and die with it.
 set -euo pipefail
@@ -17,10 +21,28 @@ url=$(uvx vastai ssh-url "$instance_id")        # ssh://root@HOST:PORT
 host_port=${url#ssh://}
 host=${host_port%:*}
 port=${host_port##*:}
-ssh_cmd="ssh -p $port -o StrictHostKeyChecking=accept-new"
+ssh_cmd="ssh -p $port -o StrictHostKeyChecking=accept-new${VAST_SSH_KEY:+ -i $VAST_SSH_KEY}"
 
+# Plain -az only: macOS ships openrsync, which rejects GNU-only options such as
+# --info. A rejected option aborts before copying anything.
 for dir in results data/generations logs; do
   mkdir -p "$dir"
-  rsync -az --info=stats1 -e "$ssh_cmd" "$host:dtmd/$dir/" "$dir/"
+  rsync -az -e "$ssh_cmd" "$host:$dir/" "$dir/"
 done
-echo "pulled results/, data/generations/ and logs/ from instance $instance_id"
+
+# Verify before anyone destroys the instance. Destroying deletes the VM's disk,
+# so this check is the only thing standing between a failed copy and lost runs.
+missing=0
+for f in results/val/report.md results/test/report.md; do
+  if [ -s "$f" ]; then echo "  ok       $f"; else echo "  MISSING  $f" >&2; missing=1; fi
+done
+generations=$(ls data/generations/*.json 2>/dev/null | wc -l | tr -d ' ')
+echo "  ok       $generations score files in data/generations/"
+
+if [ "$missing" -ne 0 ] || [ "$generations" -eq 0 ]; then
+  echo >&2
+  echo "PULL INCOMPLETE. Do NOT destroy instance $instance_id." >&2
+  exit 1
+fi
+echo
+echo "Pulled and verified. Safe to destroy: uvx vastai destroy instance $instance_id"

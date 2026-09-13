@@ -243,3 +243,6 @@ uv.lock
 
 # Run logs from the GPU box.
 logs/
+
+# Machine-specific connection details (IP, port, instance id). Never commit.
+*.local.md

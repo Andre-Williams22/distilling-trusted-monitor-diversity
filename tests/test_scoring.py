@@ -297,3 +297,32 @@ def test_derive_m0_never_overwrites_an_independent_run(tmp_path):
                 tmp_path / "m0__val.json")
     with pytest.raises(ValueError, match="refusing to overwrite"):
         derive_m0_from_m1("val", directory=tmp_path)
+
+
+def test_scoring_imports_without_mlx():
+    """The GPU box has no MLX, so importing scoring must not require it.
+
+    Runs in a fresh interpreter with every MLX module blocked, which is exactly
+    the Linux GPU environment. A top-level MLX import passes every other test
+    on a Mac and then fails on the first scoring command on the rented GPU.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = (
+        "import sys\n"
+        "for name in ('mlx', 'mlx.core', 'mlx_lm', 'mlx_lm.sample_utils'):\n"
+        "    sys.modules[name] = None\n"
+        "import src.scoring, src.analysis, src.figures\n"
+        "src.scoring.get_backend('vllm')\n"
+        "print('ok')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parent.parent,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
