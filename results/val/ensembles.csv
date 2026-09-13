@@ -1,0 +1,6 @@
+monitor,role,pauc,gain_over_m0
+M2 · 3 persona prompts,diverse ensemble,0.8592,0.0204
+M2 · control flow,best single persona,0.8578,0.0189
+M0 · single monitor,single baseline,0.8388,0.0
+Median single persona,median persona,0.8379,-0.0009
+M1 · 3 identical samples,3× baseline ensemble,0.8346,-0.0042
