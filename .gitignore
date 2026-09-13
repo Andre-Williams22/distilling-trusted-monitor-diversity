@@ -240,3 +240,6 @@ runs/
 # (`uv lock && uv export`), but the repo installs with plain pip and does not
 # need it. requirements.txt is the committed, pinned artifact.
 uv.lock
+
+# Run logs from the GPU box.
+logs/

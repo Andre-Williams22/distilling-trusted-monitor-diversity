@@ -82,6 +82,20 @@ batching make it several times faster than a `transformers` generate loop, and
 a crashed scoring script leaves the 15 GB model load standing rather than
 paying another cold start on resume.
 
+### GPU run on vast.ai
+
+Three scripts in `infra/vast/` cover the whole round trip:
+
+| Where | Command | Does |
+|---|---|---|
+| VM | `bash infra/vast/remote_setup.sh` | installs the env, rebuilds and **hash-checks** the splits, starts vLLM in tmux, smoke-tests 4 items |
+| VM | `tmux new -s run 'bash infra/vast/run_untrained_arms.sh'` | M1 → M0 (derived) → M2 on val then test, then `analyse` for both |
+| laptop | `bash infra/vast/pull_results.sh` | copies `results/`, `data/generations/` and `logs/` back |
+
+The host driver must support CUDA 13 (driver ≥ 580): the pinned torch uses
+CUDA 13 libraries, so an offer showing CUDA 12.8 will fail at the first model
+load. Search with `cuda_vers>=13.0`.
+
 ### Local pilot (Apple Silicon)
 
 The MLX packages are already installed by the same file:
