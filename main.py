@@ -65,6 +65,15 @@ def cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_derive_m0(args: argparse.Namespace) -> int:
+    """Take M0's scores from the first of M1's three samples."""
+    from src.scoring import derive_m0_from_m1
+
+    path = derive_m0_from_m1(split=args.split, limit=args.limit)
+    print(f"scores -> {path}")
+    return 0
+
+
 def cmd_diversity_check(args: argparse.Namespace) -> int:
     """Score a split with the other model families, to test ADR-0002.
 
@@ -201,6 +210,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_backend_flag(sub)
     add_resume_flag(sub)
+
+    sub = add(
+        "derive-m0",
+        cmd_derive_m0,
+        "Take M0's scores from the first of M1's samples (same prompt and "
+        "temperature, so no re-scoring).",
+    )
+    sub.add_argument("--split", required=True, choices=SPLIT_CHOICES)
+    sub.add_argument("--limit", type=int, default=None)
 
     sub = add(
         "diversity-check",

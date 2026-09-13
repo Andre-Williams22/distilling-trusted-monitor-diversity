@@ -1,0 +1,10 @@
+monitor,arm,kind,pauc,pauc_low,pauc_high
+M2 · 3 persona prompts,m2,arm,0.796,0.7455,0.8452
+M1 · 3 identical samples,m1,arm,0.7712,0.7244,0.8267
+M2 · control flow,m2,member,0.7651,0.6959,0.8309
+M1 · sample 2,m1,member,0.7581,0.7041,0.8185
+M2 · attacker,m2,member,0.7401,0.6599,0.8196
+M0 · single monitor,m0,arm,0.7282,0.6596,0.7995
+M1 · sample 1,m1,member,0.7282,0.6596,0.7995
+M1 · sample 3,m1,member,0.6889,0.6274,0.7598
+M2 · reference solution,m2,member,0.6185,0.563,0.7081

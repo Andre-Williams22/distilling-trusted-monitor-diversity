@@ -592,7 +592,8 @@ def plot_pauc_bars(
         ax.text(row["pauc_high"] + 0.012, y, value, va="center", ha="left",
                 fontsize=9.5, color=INK, zorder=4)
 
-    arms_present = list(dict.fromkeys(row["arm"] for row in monitors))
+    run_order = ("m0", "m1", "m2", "m4", "m3")
+    arms_present = [arm for arm in run_order if any(r["arm"] == arm for r in monitors)]
     handles = [
         Patch(facecolor=ARM_COLORS[arm], label=ARM_TITLES[arm]) for arm in arms_present
     ]

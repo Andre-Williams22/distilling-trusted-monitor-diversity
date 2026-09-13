@@ -267,3 +267,33 @@ def test_refuses_to_mix_backends_in_one_file(tmp_path):
     with pytest.raises(ValueError, match="mv "):
         score_items(make_items(2), BASELINE_PROMPT, other, "m0", out)
     assert other.calls == 0
+
+
+def test_derive_m0_takes_the_first_m1_sample(tmp_path):
+    """M0 is one draw of M1: same prompt and temperature, sample 0."""
+    from src.config import BASELINE_PROMPT
+    from src.scoring import derive_m0_from_m1, score_items
+    from src.utils import read_json_records
+
+    score_items(make_items(4), BASELINE_PROMPT, FakeBackend(), "m1",
+                tmp_path / "m1__val.json", n_samples=3)
+    derive_m0_from_m1("val", directory=tmp_path)
+
+    m0 = read_json_records(tmp_path / "m0__val.json")
+    assert len(m0) == 4
+    assert {row["sample"] for row in m0} == {0}
+    assert {row["arm"] for row in m0} == {"m0"}
+    assert all(row["derived_from"] == "m1 sample 0" for row in m0)
+
+
+def test_derive_m0_never_overwrites_an_independent_run(tmp_path):
+    """A real M0 run must survive an accidental derive."""
+    from src.config import BASELINE_PROMPT
+    from src.scoring import derive_m0_from_m1, score_items
+
+    score_items(make_items(2), BASELINE_PROMPT, FakeBackend(), "m1",
+                tmp_path / "m1__val.json", n_samples=3)
+    score_items(make_items(2), BASELINE_PROMPT, FakeBackend(), "m0",
+                tmp_path / "m0__val.json")
+    with pytest.raises(ValueError, match="refusing to overwrite"):
+        derive_m0_from_m1("val", directory=tmp_path)

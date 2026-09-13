@@ -749,6 +749,61 @@ def score_arm(
     return out_path
 
 
+def derive_m0_from_m1(
+    split: SplitName,
+    limit: int | None = None,
+    directory: Path = GENERATIONS_DIR,
+) -> Path:
+    """Build M0's scores from the first of M1's three samples.
+
+    This is the preregistered design, not a shortcut (``SamplingConfig``): M0
+    and M1 use the same prompt and temperature, so M0 is exactly one draw of
+    M1. Taking it from M1 keeps the two arms paired item for item and saves
+    re-scoring the whole split.
+
+    Every derived row records ``derived_from`` so the report's provenance is
+    visible in the data.
+
+    Args:
+        split: Which split's M1 scores to read.
+        limit: The ``--limit`` the M1 run used, if any.
+        directory: Where generation files live.
+
+    Returns:
+        The M0 file written.
+
+    Raises:
+        FileNotFoundError: If M1 has not been scored for this slice.
+        ValueError: If an independently scored M0 file already exists, which
+            this must never overwrite.
+    """
+    suffix = f"__limit{limit}" if limit is not None else ""
+    source = directory / f"m1__{split}{suffix}.json"
+    target = directory / f"m0__{split}{suffix}.json"
+
+    rows = read_json_records(source)
+    if not rows:
+        raise FileNotFoundError(
+            f"{source} not found; run `python main.py score --arm m1 "
+            f"--split {split}` first"
+        )
+
+    existing = read_json_records(target)
+    if existing and any("derived_from" not in row for row in existing):
+        raise ValueError(
+            f"{target} holds an independently scored M0; refusing to overwrite it"
+        )
+
+    derived = [
+        {**row, "arm": "m0", "derived_from": "m1 sample 0"}
+        for row in rows
+        if row["sample"] == 0
+    ]
+    write_json_records(target, derived)
+    logger.info("derived %d M0 records from %s -> %s", len(derived), source, target)
+    return target
+
+
 def score_alternate_models(
     split: SplitName,
     models: Sequence[str],
