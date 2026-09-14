@@ -113,6 +113,23 @@ class Backend(Protocol):
         ...
 
 
+class PromptTooLongError(RuntimeError):
+    """The prompt plus the answer budget exceeds the model's context window.
+
+    Raised instead of a generic failure so a single over-long item is recorded
+    as unreadable and skipped, rather than stopping a whole scoring run.
+    """
+
+
+#: Phrases vLLM uses when a request exceeds ``--max-model-len``.
+CONTEXT_LENGTH_MARKERS = (
+    "maximum context length",
+    "longer than the maximum model length",
+    "max_model_len",
+    "too long",
+)
+
+
 class VLLMBackend:
     """Talks to vLLM's OpenAI-compatible endpoint over HTTP.
 
@@ -177,6 +194,17 @@ class VLLMBackend:
                 request, timeout=self.serving.request_timeout_s
             ) as response:
                 body = json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            # The server answered, so "is it up?" is the wrong question. Surface
+            # vLLM's own reason, and single out over-long prompts.
+            detail = error.read().decode("utf-8", errors="replace")[:500]
+            if error.code == 400 and any(
+                marker in detail.lower() for marker in CONTEXT_LENGTH_MARKERS
+            ):
+                raise PromptTooLongError(detail) from error
+            raise RuntimeError(
+                f"vLLM rejected the request (HTTP {error.code}): {detail}"
+            ) from error
         except (urllib.error.URLError, TimeoutError) as error:
             raise RuntimeError(
                 f"vLLM at {self.serving.base_url} did not answer: {error}. "
@@ -564,7 +592,20 @@ def score_items(
 
     def score_one(item: Item) -> list[dict[str, Any]]:
         prompt = render_prompt(template_path, item)
-        generations = backend.generate(prompt, n_samples, sampling)
+        try:
+            generations = backend.generate(prompt, n_samples, sampling)
+        except PromptTooLongError:
+            # Recorded, not skipped: the item counts as done so a resume does
+            # not retry it forever, and both readouts are None so it can never
+            # enter a metric or a training target as a made-up score.
+            logger.warning(
+                "%s/%s: prompt exceeds the context window; recorded as unreadable",
+                item.item_id, prompt_name,
+            )
+            generations = [
+                Generation(text="", finish_reason="prompt_too_long")
+                for _ in range(n_samples)
+            ]
         return [
             asdict(
                 ScoreRecord(

@@ -326,3 +326,35 @@ def test_scoring_imports_without_mlx():
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
+
+
+def test_over_long_prompt_is_recorded_as_unreadable_not_fatal(tmp_path):
+    """One item that can't fit the context window must not stop the run."""
+    from dataclasses import replace
+
+    from src.config import BASELINE_PROMPT
+    from src.scoring import PromptTooLongError, score_items
+    from src.utils import read_json_records
+
+    items = make_items(3)
+    items[1] = replace(items[1], code="x" * 50_000)
+    too_long = items[1].item_id
+
+    class LengthLimitedBackend(FakeBackend):
+        """Rejects any prompt longer than a small context window."""
+
+        def generate(self, prompt, n, sampling):
+            """Raise for the over-long item, answer normally otherwise."""
+            if len(prompt) > 10_000:
+                raise PromptTooLongError("maximum context length is 8192 tokens")
+            return super().generate(prompt, n, sampling)
+
+    out = tmp_path / "m0__val.json"
+    score_items(items, BASELINE_PROMPT, LengthLimitedBackend(), "m0", out)
+    rows = {r["item_id"].split("::")[0]: r for r in read_json_records(out)}
+
+    assert len(rows) == 3
+    assert rows[too_long]["finish_reason"] == "prompt_too_long"
+    assert rows[too_long]["logprob_score"] is None
+    assert rows[too_long]["text_score"] is None
+    assert rows[items[0].item_id]["logprob_score"] is not None
