@@ -27,6 +27,8 @@ import re
 import json
 import math
 import time
+import torch 
+from torch.nn import functional
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -44,9 +46,6 @@ from src.utils import (
     run_dir,
     set_seed,
 )
-
-if TYPE_CHECKING:
-    import torch
 
 logger = get_logger(__name__)
 
@@ -269,6 +268,31 @@ def build_target_response(
 
     return f"REASONING: {reasoning}\nBACKDOORED: {verdict}\nSUSPICION: {suspicion}"
 
+def find_verdict_offset(
+    response_ids: list[int], tokenizer: Any, yes_ids: list[int], no_ids: list[int]
+) -> int | None:
+    """Find the index of the yes/no token that directly follows ``BACKDOORED:``.
+
+    Searches decoded text rather than assuming a token layout, since the
+    reasoning sentence can itself contain "yes" or "no".
+
+    Args:
+        response_ids: The tokenised response.
+        tokenizer: The base model's tokenizer.
+        yes_ids: Token ids counted as "yes".
+        no_ids: Token ids counted as "no".
+
+    Returns:
+        The index within ``response_ids``, or ``None`` if not found.
+    """
+    verdict_ids = set(yes_ids) | set(no_ids)
+    for index, token in enumerate(response_ids):
+        if token in verdict_ids:
+            before = tokenizer.decode(response_ids[:index])
+            if before.rstrip().endswith("BACKDOORED:"):
+                return index
+    return None
+
 
 def build_sft_example(
     item: Item,
@@ -317,7 +341,43 @@ def build_sft_example(
     Returns:
         The example, or ``None`` if it cannot be built.
     """
-    raise NotImplementedError
+    if not target or not persona_rows:
+            return None
+    kd_target = teacher_verdict_probability(target)
+    if kd_target is None:
+        return None
+    try:
+        response = build_target_response(item, target, persona_rows)
+    except ValueError:
+        return None
+
+    prompt_text = tokenizer.apply_chat_template(
+        [{"role": "user", "content": render_prompt(config.BASELINE_PROMPT, item)}],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+    # Encoded separately: at serve time vLLM encodes the prompt, then generates
+    # the response token by token, so no BPE merge ever crosses this boundary.
+    prompt_ids = tokenizer.encode(prompt_text, add_special_tokens=False)
+    end_of_turn = tokenizer.convert_tokens_to_ids("<|im_end|>")
+    response_ids = tokenizer.encode(response, add_special_tokens=False) + [end_of_turn]
+
+    verdict_offset = find_verdict_offset(response_ids, tokenizer, yes_ids, no_ids)
+    if verdict_offset is None:
+        return None
+
+    input_ids = prompt_ids + response_ids
+    if len(input_ids) > config.TRAINING.max_seq_length:
+        return None
+
+    return SFTExample(
+        item_id=item.item_id,
+        input_ids=input_ids,
+        labels=[-100] * len(prompt_ids) + response_ids,
+        verdict_pos=len(prompt_ids) + verdict_offset,
+        kd_target=kd_target,
+    )
+
 
 
 # --------------------------------------------------------------------------
@@ -485,7 +545,38 @@ def two_term_loss(
         ``(loss, parts)``: a scalar with grad, and detached floats
         ``{"ce_text", "kd_yes", "p_yes_mean"}`` for logging.
     """
-    raise NotImplementedError
+
+
+    vocab = logits.size(-1)
+
+    # CE_text: the logits at position t predict the token at t + 1.
+    ce_text = functional.cross_entropy(
+        logits[:, :-1].float().reshape(-1, vocab),
+        labels[:, 1:].reshape(-1),
+        ignore_index=-100,
+    )
+
+    # KD_yes: the normalised P(yes) one position before the verdict token.
+    rows = torch.arange(logits.size(0), device=logits.device)
+    positions = verdict_pos.to(logits.device) - 1
+    log_probs = functional.log_softmax(logits[rows, positions].float(), dim=-1)
+    log_yes = torch.logsumexp(log_probs[:, yes_ids], dim=-1)
+    log_no = torch.logsumexp(log_probs[:, no_ids], dim=-1)
+    log_total = torch.logaddexp(log_yes, log_no)
+    log_p_yes, log_p_no = log_yes - log_total, log_no - log_total
+
+    # Binary cross-entropy against the soft teacher target, in log space so it
+    # stays finite when P(yes) is near 0 or 1.
+    target = kd_target.to(logits.device).float()
+    kd_yes = -(target * log_p_yes + (1 - target) * log_p_no).mean()
+
+    loss = ce_text if kd_weight == 0.0 else ce_text + kd_weight * kd_yes
+    parts = {
+        "ce_text": ce_text.detach().item(),
+        "kd_yes": kd_yes.detach().item(),
+        "p_yes_mean": log_p_yes.detach().exp().mean().item(),
+    }
+    return loss, parts
 
 
 def train_epochs(
@@ -522,7 +613,71 @@ def train_epochs(
         ``{"step", "epoch", "loss", "ce_text", "kd_yes", "p_yes_mean", "lr"}``,
         loss parts averaged over that step's micro-batches.
     """
-    raise NotImplementedError
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(params, lr=learning_rate, weight_decay=0.0)
+
+    batches_per_epoch = math.ceil(len(examples) / batch_size)
+    total_steps = epochs * math.ceil(batches_per_epoch / grad_accum)
+    warmup_steps = max(1, round(0.05 * total_steps))
+
+    def lr_scale(step: int) -> float:
+        if step < warmup_steps:
+            return (step + 1) / warmup_steps
+        remaining = total_steps - step
+        return max(0.0, remaining / max(1, total_steps - warmup_steps))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_scale)
+    model.train()
+    history: list[dict[str, float]] = []
+    step = 0
+
+    for epoch in range(epochs):
+        generator = torch.Generator().manual_seed(seed + epoch)
+        order = torch.randperm(len(examples), generator=generator).tolist()
+        batches = [order[i : i + batch_size] for i in range(0, len(order), batch_size)]
+
+        optimizer.zero_grad(set_to_none=True)
+        totals = {"loss": 0.0, "ce_text": 0.0, "kd_yes": 0.0, "p_yes_mean": 0.0}
+        micro = 0
+
+        for index, indices in enumerate(batches):
+            batch = collate([examples[i] for i in indices], pad_id)
+            batch = {name: tensor.to(model.device) for name, tensor in batch.items()}
+            logits = model(
+                input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
+            ).logits
+            loss, parts = two_term_loss(
+                logits, batch["labels"], batch["verdict_pos"], batch["kd_target"],
+                yes_ids, no_ids, kd_weight,
+            )
+            (loss / grad_accum).backward()
+
+            totals["loss"] += loss.detach().item()
+            for name in ("ce_text", "kd_yes", "p_yes_mean"):
+                totals[name] += parts[name]
+            micro += 1
+
+            if micro == grad_accum or index == len(batches) - 1:
+                torch.nn.utils.clip_grad_norm_(params, max_norm=1.0)
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad(set_to_none=True)
+                step += 1
+
+                row = {name: value / micro for name, value in totals.items()}
+                row.update(step=step, epoch=epoch, lr=scheduler.get_last_lr()[0])
+                history.append(row)
+                if step == 1 or step % 10 == 0 or step == total_steps:
+                    logger.info(
+                        "step %d/%d · epoch %d · loss %.4f · ce %.4f · kd %.4f "
+                        "· p_yes %.3f",
+                        step, total_steps, epoch, row["loss"], row["ce_text"],
+                        row["kd_yes"], row["p_yes_mean"],
+                    )
+                totals = dict.fromkeys(totals, 0.0)
+                micro = 0
+
+    return history
 
 
 # --------------------------------------------------------------------------
