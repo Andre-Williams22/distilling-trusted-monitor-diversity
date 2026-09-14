@@ -23,16 +23,17 @@ with the ``label`` field stripped, and ``SFTExample`` has nowhere to put one.
 
 from __future__ import annotations
 
-import re 
 import json
 import math
+import re
 import time
-import torch 
-from torch.nn import functional
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import torch
+from torch.nn import functional
 
 from src import config
 from src.data import Item, SplitName, load_split
@@ -545,8 +546,6 @@ def two_term_loss(
         ``(loss, parts)``: a scalar with grad, and detached floats
         ``{"ce_text", "kd_yes", "p_yes_mean"}`` for logging.
     """
-
-
     vocab = logits.size(-1)
 
     # CE_text: the logits at position t predict the token at t + 1.

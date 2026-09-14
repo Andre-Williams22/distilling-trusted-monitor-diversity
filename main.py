@@ -200,7 +200,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument(
         "--adapter",
         default=None,
-        help="Path to a LoRA adapter. Required for m3 and m4, ignored otherwise.",
+        help=(
+            "Served name of a LoRA adapter (the NAME in vLLM's --lora-modules "
+            "NAME=PATH). Required for m3 and m4, ignored otherwise."
+        ),
     )
     sub.add_argument(
         "--limit",
