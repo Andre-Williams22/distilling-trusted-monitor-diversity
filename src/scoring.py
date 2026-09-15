@@ -90,6 +90,24 @@ class Generation:
     finish_reason: str = "unknown"
 
 
+#: A single user prompt, or a whole conversation (debate round 2).
+Prompt = str | list[dict[str, str]]
+
+
+def as_messages(prompt: Prompt) -> list[dict[str, str]]:
+    """Turn a prompt into chat messages.
+
+    Args:
+        prompt: A single user prompt, or a conversation already in chat form.
+
+    Returns:
+        Chat messages.
+    """
+    if isinstance(prompt, str):
+        return [{"role": "user", "content": prompt}]
+    return list(prompt)
+
+
 class Backend(Protocol):
     """A source of completions.
 
@@ -105,7 +123,7 @@ class Backend(Protocol):
 
     def generate(
         self,
-        prompt: str,
+        prompt: Prompt,
         n: int,
         sampling: SamplingConfig,
     ) -> list[Generation]:
@@ -159,12 +177,12 @@ class VLLMBackend:
         self.model_id = self.model
 
     def generate(
-        self, prompt: str, n: int, sampling: SamplingConfig
+        self, prompt: Prompt, n: int, sampling: SamplingConfig
     ) -> list[Generation]:
         """Produce ``n`` completions for one prompt.
 
         Args:
-            prompt: The rendered monitor prompt.
+            prompt: The rendered monitor prompt, or a whole conversation.
             n: How many samples to draw.
             sampling: Temperature, top-p and length limits.
 
@@ -176,7 +194,7 @@ class VLLMBackend:
         """
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": as_messages(prompt),
             "n": n,
             "temperature": sampling.temperature,
             "top_p": sampling.top_p,
@@ -244,12 +262,12 @@ class MLXBackend:
         self.model_id = model
 
     def generate(
-        self, prompt: str, n: int, sampling: SamplingConfig
+        self, prompt: Prompt, n: int, sampling: SamplingConfig
     ) -> list[Generation]:
         """Produce ``n`` completions for one prompt, one after another.
 
         Args:
-            prompt: The rendered monitor prompt.
+            prompt: The rendered monitor prompt, or a whole conversation.
             n: How many samples to draw.
             sampling: Temperature, top-p and length limits.
 
@@ -263,7 +281,7 @@ class MLXBackend:
         from mlx_lm.sample_utils import make_sampler
 
         chat = self.tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
+            as_messages(prompt),
             add_generation_prompt=True,
             tokenize=False,
         )

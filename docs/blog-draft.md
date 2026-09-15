@@ -129,13 +129,14 @@ different prompts.
 ## Next
 
 - **Repeat runs** with fixed seeds, to put error bars on M4 versus M2.
-- **M5:** distil the ensemble's *reasoning* rather than its scores — having the
-  three prompts debate, and training with DPO to prefer reasoning that survived
-  the debate (a MACA-style approach). This tests whether distilling
-  deliberation beats distilling scores.
-- Longer term: the full MACA recipe (consensus fine-tuning plus reinforcement
-  learning), ensembles of genuinely different models, and evaluation inside a
-  live control protocol.
+- **M5:** distil the ensemble's *reasoning* rather than its scores, using
+  MACA's MV-DPO — the three personas debate for two rounds, and the model is
+  trained to prefer reasoning that agreed with their majority verdict over
+  reasoning that dissented. This tests whether distilling deliberation beats
+  distilling scores.
+- Longer term: MACA's other objectives (MV-SFT, MV-GRPO, MV-KTO), training with
+  the peers' reasoning in context, ensembles of genuinely different models, and
+  evaluation inside a live control protocol.
 
 *The whole experiment — every scoring run and the M4 training run — cost about
 $2 of rented GPU time.*

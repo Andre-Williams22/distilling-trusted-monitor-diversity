@@ -9,8 +9,8 @@
 #
 #   VAST_SSH_KEY=~/.ssh/arena_key bash infra/vast/pull_results.sh
 #
-# Only results/ and data/generations/ travel back; the model weights and the
-# environment stay on the box and die with it.
+# results/, data/ and the LoRA adapters travel back; the base model weights and
+# the environment stay on the box and die with it.
 set -euo pipefail
 
 instance_id="${1:-$(uvx vastai show instances --raw | python3 -c \
@@ -25,7 +25,7 @@ ssh_cmd="ssh -p $port -o StrictHostKeyChecking=accept-new${VAST_SSH_KEY:+ -i $VA
 
 # Plain -az only: macOS ships openrsync, which rejects GNU-only options such as
 # --info. A rejected option aborts before copying anything.
-for dir in results data/generations logs; do
+for dir in results data/generations data/training runs logs; do
   mkdir -p "$dir"
   rsync -az -e "$ssh_cmd" "$host:$dir/" "$dir/"
 done
@@ -38,6 +38,8 @@ for f in results/val/report.md results/test/report.md; do
 done
 generations=$(ls data/generations/*.json 2>/dev/null | wc -l | tr -d ' ')
 echo "  ok       $generations score files in data/generations/"
+adapters=$(ls -d runs/*/adapter 2>/dev/null | wc -l | tr -d ' ')
+echo "  ok       $adapters trained adapters in runs/"
 
 if [ "$missing" -ne 0 ] || [ "$generations" -eq 0 ]; then
   echo >&2

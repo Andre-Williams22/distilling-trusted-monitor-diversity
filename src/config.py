@@ -299,30 +299,24 @@ class SFTConfig:
 
 @dataclass(frozen=True)
 class DPOConfig:
-    """M5-specific settings: DPO on debate-consensus preference pairs.
+    """M5-specific settings: MACA's MV-DPO (arXiv:2509.15172; ADR-0003).
 
-    This is **not** MACA. Published MACA is MV-SFT plus MV-GRPO; this is
-    offline DPO on pairs derived from a two-round debate. See ADR-0003, and
-    never let the unqualified name reach the write-up.
+    Adapted from the paper in three documented ways: personas debate rather
+    than identical model copies; training conditions on the baseline prompt,
+    not the debate context, to match deployment; and debate sampling uses the
+    project temperature (0.7) rather than the paper's 1.0, so debate data
+    matches M4's teacher.
 
     Attributes:
-        beta: Standard DPO temperature.
-        debate_rounds: Round 1 scores independently; round 2 revises after
-            seeing the other two personas' round-1 reasoning.
-        consensus_bins: ``"binary"`` (suspicious at score >= 5) by default.
-            Switch to ``"quintiles"`` only if val agreement exceeds
-            ``agreement_ceiling`` — a rule decided in advance, never tuned
-            after seeing results.
-        agreement_ceiling: Above this, binary consensus is too degenerate to
-            supervise anything.
-        max_pairs_per_item: Caps how much any single item can dominate.
+        beta: DPO temperature.
+        debate_rounds: Round 1 is each persona alone (M4's teacher answers);
+            round 2 revises after reading the other two.
+        max_pairs_per_item: Cap on (agree, dissent) pairs per item. With three
+            agents a split gives at most two, so the cap never binds.
     """
 
     beta: float = 0.1
     debate_rounds: int = 2
-    consensus_bins: str = "binary"
-    binary_threshold: int = 5
-    agreement_ceiling: float = 0.85
     max_pairs_per_item: int = 3
 
 

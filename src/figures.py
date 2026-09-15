@@ -42,7 +42,7 @@ ARM_TITLES = {
     "m2": "M2 · 3 persona prompts",
     "m3": "M3 · distilled from M1",
     "m4": "M4 · two-term SFT",
-    "m5": "M5 · DPO, MACA-style",
+    "m5": "M5 · MACA (MV-DPO)",
 }
 
 #: Fixed per arm, in run order of the palette's validated categorical slots.

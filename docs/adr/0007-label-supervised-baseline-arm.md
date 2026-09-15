@@ -10,7 +10,7 @@ label. Its test result (pAUC 0.810 vs M0's 0.709) shows distillation helps, but
 not whether *the ensemble* is what helps: any fine-tuning on this task might do
 as well. M3 answers that. It is the same base model, adapter, prompt, training
 split and serving path as M4, fine-tuned instead on the training split's true
-backdoored/clean labels. The MACA-style DPO arm, which was M3, becomes M5 so the
+backdoored/clean labels. The MACA arm, which was M3, becomes M5 so the
 two trained baselines sit next to each other in run order.
 
 ## Considered options

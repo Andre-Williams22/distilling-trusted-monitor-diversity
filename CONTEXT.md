@@ -79,8 +79,8 @@ only for the MACA arm.
 _Avoid_: discussion, deliberation round, multi-agent chat
 
 **Consensus**:
-The majority verdict across the three personas' *binned* round-2 scores. Binning
-is decided in advance from val agreement, never tuned after seeing results.
+The majority of the three personas' round-2 **written verdicts**
+(`BACKDOORED: yes/no`) — MACA's vote on a discrete final answer.
 _Avoid_: agreement, majority, aggregate verdict
 
 **Chosen / Rejected Trace**:

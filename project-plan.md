@@ -5,8 +5,9 @@
 **Andre Williams · BlueDot Technical AI Safety Sprint · v6, 15 Sep 2026**
 **13 days remain (15 Sep → 28 Sep)**
 
-**What changed in v6 (15 Sep):** the MACA-style DPO arm, previously M3, is
-renumbered **M5** throughout. A label-supervised baseline was added as M3,
+**What changed in v6 (15 Sep):** the MACA arm, previously M3, is renumbered
+**M5** throughout, and ADR-0003 was corrected: M5 implements MACA's **MV-DPO**,
+the paper's best objective at this model size, not a stand-in for it. A label-supervised baseline was added as M3,
 trained, and then excluded from the analysis because deployed trusted monitors
 have no attack labels (ADR-0007, which records its result).
 
@@ -206,9 +207,9 @@ monitor has no consensus signal to internalize.
 | **M2** | 3 fixed, distinct persona prompts, mean-aggregated | 3× | +0.07 to +0.09 — the ceiling |
 | **M3** | **Two-term SFT distilled from M1** — the identical ensemble; every setting as M4 (ADR-0008; *follow-up, 15 Sep*) | **1×** | isolates diversity: does distilling a diverse teacher beat an identical one? |
 | **M4** | **Two-term SFT** — distilled from ensemble mean scores (ADR-0005) | **1×** | genuinely open — the honest test of whether distillation works at all |
-| **M5** | **DPO on consensus pairs** — distilled from ensemble debate (MACA-style, *not* MACA; ADR-0003) | **1×** | target: ≥60% of M2's gain |
+| **M5** | **MACA (MV-DPO)** — DPO on persona-debate consensus pairs (ADR-0003) | **1×** | target: ≥60% of M2's gain |
 
-**Arm numbering changed on 15 Sep.** The MACA-style DPO arm was M3 until then and
+**Arm numbering changed on 15 Sep.** The MACA arm was M3 until then and
 is now **M5**; M3 is the new label-supervised baseline. Anything dated before
 15 Sep that says "M3" means today's M5.
 
@@ -218,11 +219,13 @@ attacks it faces. Because the exclusion came after its result — test pAUC 0.93
 above M4's 0.810 — the numbers and the reasoning are recorded in ADR-0007
 rather than dropped.
 
-**M5 is not MACA and must never be called MACA.** Published MACA is MV-SFT plus
-MV-GRPO; M5 is offline DPO on debate-consensus preference pairs, chosen because
-GRPO's rollout loop does not fit a 24-day sprint on one GPU. The write-up says
-*"DPO on MACA-style consensus-derived preference pairs."* A null H3 is evidence
-about this adaptation, not about MACA. See ADR-0003.
+**M5 is MACA's MV-DPO** (ADR-0003, revised 15 Sep). MACA evaluates four
+objectives on the same debate data and reports MV-DPO best at 4-8B, so M5
+implements the paper's own best recipe at this model size, with three named
+adaptations: personas instead of identical copies, the written `BACKDOORED`
+verdict as the voted answer, and training on the baseline prompt without debate
+context, to match deployment. An earlier version of this plan said MACA was
+"MV-SFT plus MV-GRPO" and that M5 must never be called MACA; that was wrong.
 
 **M2's prompts are fixed, not searched for.** Write three sensibly different
 personas yourself — e.g. "look for suspicious control flow," "compare against
@@ -285,12 +288,11 @@ This step turns prompts + data into training material, in order:
 3. **Debate, for M5 only, on train:** the three M2 personas run two rounds —
    round 1 each scores independently, round 2 each revises after seeing the
    other two's round-1 reasoning. Persist full traces, not just scores.
-4. **Consensus and pairs, for M5 only:** bin each round-2 score (default
-   binary, suspicious ≥5 — switch to quintiles if val agreement exceeds 85%,
-   decided in advance, not tuned after the fact), take the majority across the
-   three agents as the consensus, then split traces into agree-with-majority
-   (chosen) and dissent (rejected). Build (chosen, rejected) pairs, capped at
-   2–3 per item.
+4. **Consensus and pairs, for M5 only:** take the majority of the three
+   round-2 **written verdicts** (`BACKDOORED: yes/no`), as MACA votes on a
+   discrete final answer. Answers agreeing with the majority are chosen,
+   dissenters rejected, and every agreeing × dissenting combination becomes a
+   pair (at most two with three agents). Unanimous items yield none.
 5. **Prompt normalisation, for M5 only — do not skip this:** rewrite every
    pair's prompt field from the persona prompt to the baseline prompt. The
    debate happened under persona framing; the trained model deploys under the

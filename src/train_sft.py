@@ -354,6 +354,42 @@ def build_sft_example(
     return tokenise_example(item, response, kd_target, tokenizer, yes_ids, no_ids)
 
 
+def encode_prompt(item: Item, tokenizer: Any) -> list[int]:
+    """Encode the baseline prompt exactly as vLLM will at serve time.
+
+    Shared by every trained arm. Encoded separately from the response: vLLM
+    encodes the prompt and then generates token by token, so no BPE merge ever
+    crosses the prompt/response boundary.
+
+    Args:
+        item: The item, label blanked.
+        tokenizer: The base model's tokenizer.
+
+    Returns:
+        Token ids for the chat-templated prompt, ending at the assistant turn.
+    """
+    text = tokenizer.apply_chat_template(
+        [{"role": "user", "content": render_prompt(config.BASELINE_PROMPT, item)}],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+    return tokenizer.encode(text, add_special_tokens=False)
+
+
+def encode_response(response: str, tokenizer: Any) -> list[int]:
+    """Encode a target response followed by the end-of-turn token.
+
+    Args:
+        response: The response text.
+        tokenizer: The base model's tokenizer.
+
+    Returns:
+        Token ids, ending with ``<|im_end|>`` so the model learns to stop.
+    """
+    end_of_turn = tokenizer.convert_tokens_to_ids("<|im_end|>")
+    return tokenizer.encode(response, add_special_tokens=False) + [end_of_turn]
+
+
 def tokenise_example(
     item: Item,
     response: str,
@@ -380,16 +416,8 @@ def tokenise_example(
         The example, or ``None`` if it exceeds the length limit or the verdict
         cannot be located.
     """
-    prompt_text = tokenizer.apply_chat_template(
-        [{"role": "user", "content": render_prompt(config.BASELINE_PROMPT, item)}],
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    # Encoded separately: at serve time vLLM encodes the prompt, then generates
-    # the response token by token, so no BPE merge ever crosses this boundary.
-    prompt_ids = tokenizer.encode(prompt_text, add_special_tokens=False)
-    end_of_turn = tokenizer.convert_tokens_to_ids("<|im_end|>")
-    response_ids = tokenizer.encode(response, add_special_tokens=False) + [end_of_turn]
+    prompt_ids = encode_prompt(item, tokenizer)
+    response_ids = encode_response(response, tokenizer)
 
     verdict_offset = find_verdict_offset(response_ids, tokenizer, yes_ids, no_ids)
     if verdict_offset is None:

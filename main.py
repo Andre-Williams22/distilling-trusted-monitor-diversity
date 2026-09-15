@@ -94,7 +94,7 @@ def cmd_diversity_check(args: argparse.Namespace) -> int:
 
 
 def cmd_debate(args: argparse.Namespace) -> int:
-    """Run the two-round persona debate and persist full traces."""
+    """Run debate round 2 for M5 and persist full transcripts."""
     from src.debate import run_debate
 
     path = run_debate(split=args.split, resume=not args.no_resume)
@@ -103,10 +103,10 @@ def cmd_debate(args: argparse.Namespace) -> int:
 
 
 def cmd_build_pairs(args: argparse.Namespace) -> int:
-    """Turn debate transcripts into DPO preference pairs under the baseline prompt."""
+    """Turn debate transcripts into MACA preference pairs by majority verdict."""
     from src.debate import build_preference_pairs
 
-    path = build_preference_pairs(bins=args.bins)
+    path = build_preference_pairs(split=args.split)
     print(f"pairs -> {path}")
     return 0
 
@@ -132,7 +132,7 @@ def cmd_train_sft(args: argparse.Namespace) -> int:
 
 
 def cmd_train_dpo(args: argparse.Namespace) -> int:
-    """Train M5 on debate-consensus preference pairs (ADR-0003)."""
+    """Train M5 with MACA's MV-DPO on debate preference pairs (ADR-0003)."""
     from src.train_dpo import train
 
     run = train(smoke=args.smoke)
@@ -232,20 +232,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_backend_flag(sub)
     add_resume_flag(sub)
 
-    sub = add("debate", cmd_debate, "Run the two-round persona debate.")
+    sub = add("debate", cmd_debate, "Run debate round 2 (M5, MACA).")
     sub.add_argument("--split", required=True, choices=SPLIT_CHOICES)
     add_resume_flag(sub)
 
-    sub = add("build-pairs", cmd_build_pairs, "Build DPO preference pairs.")
-    sub.add_argument(
-        "--bins",
-        default="binary",
-        choices=("binary", "quintiles"),
-        help=(
-            "Consensus binning. Binary unless val agreement exceeds 85%%, a "
-            "rule fixed in advance rather than tuned after seeing results."
-        ),
+    sub = add(
+        "build-pairs", cmd_build_pairs,
+        "Build MACA preference pairs from the round-2 majority verdict.",
     )
+    sub.add_argument("--split", default="train", choices=SPLIT_CHOICES)
 
     sub = add("teacher-scores", cmd_teacher_scores, "Generate M4's targets.")
     sub.add_argument("--split", default="train", choices=SPLIT_CHOICES)
@@ -280,8 +275,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    sub = add("train-dpo", cmd_train_dpo, "Train M5.")
-    sub.add_argument("--smoke", action="store_true", help="Run on ~50 items.")
+    sub = add("train-dpo", cmd_train_dpo, "Train M5 (MACA, MV-DPO).")
+    sub.add_argument(
+        "--smoke", action="store_true",
+        help="Train on the first 20 pairs to prove the loop runs.",
+    )
 
     sub = add(
         "analyse", cmd_analyse, "Compute metrics, draw figures, write the report."

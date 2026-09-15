@@ -1,50 +1,48 @@
 ---
 status: accepted
 date: 2026-09-09
+revised: 2026-09-15
 ---
 
-# Implement the "MACA" arm as DPO on debate-consensus preference pairs
+# M5 is MACA: MV-DPO on persona-debate consensus pairs
 
-MACA as published (arXiv:2509.15172) is **MV-SFT plus MV-GRPO** — supervised
-fine-tuning on majority-vote-consistent trajectories, followed by reinforcement
-learning with a consensus reward. This project implements neither. M5 instead
-runs a two-round debate between the three personas, bins the round-2 scores,
-takes the majority as consensus, splits traces into agree-with-majority
-(chosen) and dissent (rejected), and trains **QLoRA DPO (β = 0.1)** on those
-pairs. DPO reaches the same objective — prefer reasoning that survives peer
-scrutiny — without a rollout loop, a reward model, or the GRPO
-infrastructure that would not fit in a 24-day sprint on one GPU.
+MACA (arXiv:2509.15172) post-trains a model on its own multi-agent debate. It
+evaluates **four** objectives on the same debate data -- MV-SFT, MV-GRPO,
+MV-DPO and MV-KTO -- and reports that **preference learning over full reasoning
+traces beats binary consensus rewards and SFT**, with **MV-DPO best at 4-8B**.
+M5 therefore implements **MV-DPO**, the paper's own best recipe at Qwen-7B's
+size: three agents, two rounds, majority vote on the final written answer, every
+agreeing x dissenting pair, DPO, QLoRA, no ground-truth labels.
 
-## Considered options
+## Correction, 15 Sep
 
-- **DPO on (chosen, rejected) consensus pairs** (chosen). One offline training
-  run, no rollouts, standard TRL support.
-- **Faithful MV-SFT + MV-GRPO** (rejected). The published method, but GRPO needs
-  an online rollout loop and substantially more GPU-hours and debugging time
-  than the budget allows.
-- **MV-SFT alone** (rejected). Cheapest, but reduces to "SFT on a filtered
-  subset", which collapses the contrast against M4 — the two arms would differ
-  only in which data they see, not in what they optimise.
+An earlier version of this ADR said MACA was "MV-SFT plus MV-GRPO", that this
+arm implemented neither, and that it "must never be called MACA". That was
+wrong on all three counts, and the error spread to project-plan.md and the blog
+draft. M5 is a faithful MV-DPO implementation with three documented adaptations
+below; the write-up may call it MACA (MV-DPO), naming those adaptations.
+
+## Adaptations, and why
+
+| | MACA | M5 | Why |
+|---|---|---|---|
+| Agents | 3 identical copies | 3 different **personas** | The project studies distilling *diversity*; M4 vs M3 shows a diverse teacher distils better (ADR-0008) |
+| Voted answer | extracted final answer | the written `BACKDOORED: yes/no` | The task's discrete answer. Replaces the earlier plan's binned 0-10 score, which was a needless deviation |
+| Training context | question **plus peers' reasoning** (the paper's stronger setting) | **baseline prompt only** | A deployed trusted monitor sees no peers, and M4 trains the same way, so M5 vs M4 differs only in objective |
+| Debate temperature | 1.0 | 0.7 | Matches M4's teacher data and the rest of the project |
+| Round 1 | generated for the debate | **reused** from M4's teacher run | M4 and M5 start from identical persona answers |
 
 ## Consequences
 
-- **Naming honesty is a hard requirement.** The write-up must call this
-  *"DPO on MACA-style consensus-derived preference pairs"*, never "MACA". A
-  reader who checks the MACA paper will find no DPO in it, and an unqualified
-  claim invites the reviewer's first and most damaging objection.
-- H3 ("M5 beats M4") therefore tests *this adaptation*, not MACA itself. A null
-  result is evidence about DPO-on-consensus, and is **not** evidence that MACA
-  fails on monitoring.
-- Binary consensus binning carries **no information about score magnitude**, so
-  M5 can improve the ranking metric only through better reasoning, never through
-  better calibration. This is a direct mechanism for the sharpening cost that H4
-  predicts.
-- Preference pairs are generated under persona prompts but trained under the
-  baseline prompt (**prompt normalisation**), so chosen traces may carry persona
-  phrasing into a model that will never again see a persona framing.
-- **The two substituted stages are deferred, not rejected.** MV-SFT and
-  MV-GRPO are recorded as future extensions in project-plan.md section 10 and
-  are to be named in the write-up, so that readers can see which questions were
-  deferred rather than answered. MV-SFT in particular would separate something
-  H3 currently conflates: whether the value of debate lies in *filtering* to
-  what monitors agreed on, or in the *contrast* with what they abandoned.
+- **H3 (M5 beats M4) is a real test of MACA's method against score
+  distillation**, at the same inference cost and on the same items, not a test
+  of a stand-in.
+- **The no-context choice is deliberate and costs something.** The paper found
+  training with debate context stronger. If M5 underperforms, that is a
+  candidate explanation, and training with context is the obvious follow-up.
+- **Pairs are scarcer than the plan assumed.** Only items where the personas
+  disagree yield pairs: 36% of train items split 2-1 before debate, so at most
+  ~1,140 pairs, against the plan's ~3,900. Debate typically raises agreement,
+  so the real count is lower.
+- MV-SFT, MV-GRPO and MV-KTO remain unimplemented variants, listed in
+  project-plan.md section 10.

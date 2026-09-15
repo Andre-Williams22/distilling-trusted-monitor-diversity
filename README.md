@@ -5,8 +5,8 @@ Can inference-time monitor diversity be distilled into a single trusted monitor
 inference cost, using no labels and no stronger teacher?
 
 Two distillation methods compared side by side: supervised distillation from the
-ensemble's mean scores (M4), and DPO on MACA-style consensus-derived preference
-pairs (M5). Evaluated as static
+ensemble's mean scores (M4), and MACA's MV-DPO on preference pairs drawn from a
+three-persona debate (M5). Evaluated as static
 classification on the
 [ControlArena APPS backdoor dataset](https://huggingface.co/datasets/RoganInglis/apps-control-arena).
 

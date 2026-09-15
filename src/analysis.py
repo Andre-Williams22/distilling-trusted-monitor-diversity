@@ -94,8 +94,9 @@ ARM_PURPOSE = {
     "ensemble beat distilling an identical one?",
     "m4": "A LoRA adapter trained to reproduce M2's unrounded mean score in one "
     "call. Can an ensemble's advantage be moved into one model's weights?",
-    "m5": "A LoRA adapter trained with DPO on which persona reasoning survived a "
-    "debate (MACA-style). Does distilling deliberation beat distilling scores?",
+    "m5": "MACA's MV-DPO: the three personas debate for two rounds, and the model "
+    "is trained to prefer reasoning that agreed with their majority verdict over "
+    "reasoning that dissented. Does distilling deliberation beat distilling scores?",
 }
 
 
@@ -468,7 +469,10 @@ def evaluate_hypotheses(
             comparisons, "m2", "m1",
         ),
         _recovery_row(primary),
-        _difference_row("H3", "M5 (DPO) beats M4 (SFT)", comparisons, "m5", "m4"),
+        _difference_row(
+            "H3", "M5 (MACA, MV-DPO) beats M4 (score distillation)",
+            comparisons, "m5", "m4",
+        ),
         _sharpening_row(primary),
         _difference_row(
             "Diversity distilled",
