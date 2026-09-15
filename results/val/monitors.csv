@@ -1,4 +1,5 @@
 monitor,arm,kind,pauc,pauc_low,pauc_high
+M3 · fine-tuned on labels,m3,arm,0.9467,0.9209,0.9715
 M4 · two-term SFT,m4,arm,0.8788,0.8384,0.9193
 M2 · 3 persona prompts,m2,arm,0.8592,0.8164,0.9043
 M2 · control flow,m2,member,0.8578,0.8103,0.9011
