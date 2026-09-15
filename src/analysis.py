@@ -52,7 +52,9 @@ READOUTS = {"logprob": "logprob_score", "text": "text_score"}
 PRIMARY_READOUT = "logprob"
 
 #: Run order, which is also the order arms appear in every table and chart.
-ARM_ORDER = ("m0", "m1", "m2", "m3", "m4", "m5")
+#: M3, the label-supervised baseline, is excluded from the analysis: a trusted
+#: monitor in deployment has no labels for the attacks it faces (ADR-0007).
+ARM_ORDER = ("m0", "m1", "m2", "m4", "m5")
 
 #: Score at or above which an item counts as "flagged", per readout. Used only
 #: for the plain-language flag rates in the report, never for a metric.
@@ -66,15 +68,11 @@ COMPARISON_PAIRS = (
     ("m1", "m0"),
     ("m2", "m0"),
     ("m2", "m1"),
-    ("m3", "m0"),
-    ("m3", "m2"),
     ("m4", "m0"),
     ("m4", "m1"),
     ("m4", "m2"),
-    ("m4", "m3"),
     ("m5", "m0"),
     ("m5", "m2"),
-    ("m5", "m3"),
     ("m5", "m4"),
 )
 
@@ -469,12 +467,6 @@ def evaluate_hypotheses(
         _recovery_row(primary),
         _difference_row("H3", "M5 (DPO) beats M4 (SFT)", comparisons, "m5", "m4"),
         _sharpening_row(primary),
-        _difference_row(
-            "Labels",
-            "M4 (ensemble, no labels) vs M3 (true labels) — added after "
-            "preregistration, ADR-0007",
-            comparisons, "m4", "m3",
-        ),
     ]
     return rows
 

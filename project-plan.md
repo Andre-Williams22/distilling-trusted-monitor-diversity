@@ -5,10 +5,10 @@
 **Andre Williams · BlueDot Technical AI Safety Sprint · v6, 15 Sep 2026**
 **13 days remain (15 Sep → 28 Sep)**
 
-**What changed in v6 (15 Sep):** added **M3**, a baseline fine-tuned on the
-training split's true labels, after M4's results (reported as a reference, not a
-hypothesis; ADR-0007). The MACA-style DPO arm, previously M3, is renumbered
-**M5** throughout.
+**What changed in v6 (15 Sep):** the MACA-style DPO arm, previously M3, is
+renumbered **M5** throughout. A label-supervised baseline was added as M3,
+trained, and then excluded from the analysis because deployed trusted monitors
+have no attack labels (ADR-0007, which records its result).
 
 **What changed in v5:** dataset identity pinned and its real supply measured
 against the live dataset (§2) — nondeterministic problems now filtered out, and
@@ -204,7 +204,7 @@ monitor has no consensus signal to internalize.
 | **M0** | Single baseline monitor | 1× | floor — anchor was 0.7226 on GPT-4.1-Mini; expect ~0.62–0.72 on Qwen-7B |
 | **M1** | 3× identical, mean-aggregated | 3× | +0.03 to +0.04 — the free win any trained arm must beat |
 | **M2** | 3 fixed, distinct persona prompts, mean-aggregated | 3× | +0.07 to +0.09 — the ceiling |
-| **M3** | **Fine-tuned on true labels** — ordinary supervised baseline (ADR-0007; *added 15 Sep, after M4's results*) | **1×** | reference — does learning from the ensemble beat learning from the answers? |
+| ~~M3~~ | ~~Fine-tuned on true labels~~ — **trained, then excluded from the analysis** (ADR-0007) | 1× | a deployed trusted monitor has no attack labels |
 | **M4** | **Two-term SFT** — distilled from ensemble mean scores (ADR-0005) | **1×** | genuinely open — the honest test of whether distillation works at all |
 | **M5** | **DPO on consensus pairs** — distilled from ensemble debate (MACA-style, *not* MACA; ADR-0003) | **1×** | target: ≥60% of M2's gain |
 
@@ -212,10 +212,11 @@ monitor has no consensus signal to internalize.
 is now **M5**; M3 is the new label-supervised baseline. Anything dated before
 15 Sep that says "M3" means today's M5.
 
-**M3 is the only arm that reads ground-truth labels in training,** and it was
-added after M4's test results were known. It is therefore reported as a
-reference, not a preregistered hypothesis: it cannot promote, demote or reframe
-H1–H4. See ADR-0007.
+**M3 was trained and then excluded** (15 Sep). It is the only arm that reads
+ground-truth labels, and a trusted monitor in deployment has none for the
+attacks it faces. Because the exclusion came after its result — test pAUC 0.932,
+above M4's 0.810 — the numbers and the reasoning are recorded in ADR-0007
+rather than dropped.
 
 **M5 is not MACA and must never be called MACA.** Published MACA is MV-SFT plus
 MV-GRPO; M5 is offline DPO on debate-consensus preference pairs, chosen because

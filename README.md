@@ -6,8 +6,7 @@ inference cost, using no labels and no stronger teacher?
 
 Two distillation methods compared side by side: supervised distillation from the
 ensemble's mean scores (M4), and DPO on MACA-style consensus-derived preference
-pairs (M5). A baseline fine-tuned on the true labels (M3) shows whether learning
-from the ensemble beats learning from the answers. Evaluated as static
+pairs (M5). Evaluated as static
 classification on the
 [ControlArena APPS backdoor dataset](https://huggingface.co/datasets/RoganInglis/apps-control-arena).
 
@@ -151,7 +150,6 @@ python main.py score --arm m0 --split val
 python main.py score --arm m1 --split test
 python main.py score --arm m2 --split test
 python main.py diversity-check --split val
-# M3: fine-tuned on true labels (ADR-0007) — training stage not built yet
 python main.py teacher-scores --split train      # M4 targets
 python main.py debate --split train              # M5 transcripts
 python main.py build-pairs

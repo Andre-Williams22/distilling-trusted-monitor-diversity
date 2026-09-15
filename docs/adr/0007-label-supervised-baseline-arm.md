@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: deprecated
 date: 2026-09-15
 ---
 
@@ -51,3 +51,22 @@ two trained baselines sit next to each other in run order.
     LoRA rank, learning rate, epochs, seed, serving and scoring -- is identical.
 - **Hard 0/1 targets may saturate M3's scores.** Ties at 0 and 1 cost pAUC. If M3
   comes out low, check score spread before concluding labels are weak.
+
+## Update, 15 Sep: M3 excluded from the analysis
+
+M3 was trained and scored, then excluded from the analysis, charts and reports.
+A trusted monitor in deployment has no labelled examples of the attacks the
+untrusted model will attempt, so a monitor trained on in-distribution attack
+labels answers a different question from the one this project asks.
+
+**Recorded here because the exclusion came after the result.** On test M3 scored
+pAUC@10% **0.932** [0.917, 0.946], against M4's 0.810: M4 − M3 = −0.122
+[−0.150, −0.095]. The likeliest explanation, not verified, is that M3's labels
+come from the same backdoor generator as the test set, letting it learn that
+generator's quirks, which no label-free monitor can see. The full six-arm
+report is in commit `01c3dc0`; the run and its adapter are kept locally at
+`runs/2026-09-15__m3-sft-labels__9501200/`; the code path
+(`train-sft --targets labels`) remains.
+
+Numbering is unchanged: the DPO arm stays **M5**, and the M3 slot is retired
+rather than reused.

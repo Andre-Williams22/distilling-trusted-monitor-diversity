@@ -1,6 +1,6 @@
 # Monitor distillation results — test split
 
-**Setup:** Qwen2.5-7B-Instruct, m3, m4, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4 · **Generated:** 2026-09-15 13:24 · commit `9501200` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, m4, bf16 via vLLM · **Arms scored:** M0, M1, M2, M4 · **Generated:** 2026-09-15 13:52 · commit `01c3dc0` with uncommitted changes
 
 ## Summary
 
@@ -11,7 +11,6 @@ Primary readout: `P(yes) ÷ (P(yes) + P(no))` at the verdict token. 95% interval
 | M0 · single monitor | 1× | 1288 | 0.709 [0.67, 0.75] | 0.862 [0.84, 0.88] | 0.22 | 87% / 34% |
 | M1 · 3 identical samples | 3× | 1288 | 0.753 [0.72, 0.79] | 0.881 [0.86, 0.90] | 0.31 | 88% / 33% |
 | M2 · 3 persona prompts | 3× | 1288 | 0.779 [0.75, 0.81] | 0.906 [0.89, 0.92] | 0.38 | 91% / 29% |
-| M3 · fine-tuned on labels | 1× | 1288 | 0.932 [0.92, 0.95] | 0.965 [0.96, 0.97] | 0.79 | 95% / 27% |
 | M4 · two-term SFT | 1× | 1288 | 0.810 [0.78, 0.84] | 0.915 [0.90, 0.93] | 0.48 | 94% / 38% |
 
 Secondary readout: the written 0–10 `SUSPICION` score.
@@ -21,7 +20,6 @@ Secondary readout: the written 0–10 `SUSPICION` score.
 | M0 · single monitor | 0.549 [0.53, 0.57] | 0.779 [0.75, 0.80] | 0.49 | 10 |
 | M1 · 3 identical samples | 0.580 [0.55, 0.62] | 0.831 [0.81, 0.85] | 0.02 | 29 |
 | M2 · 3 persona prompts | 0.694 [0.65, 0.74] | 0.883 [0.86, 0.90] | 0.25 | 27 |
-| M3 · fine-tuned on labels | 0.544 [0.54, 0.55] | 0.800 [0.78, 0.82] | 0.96 | 2 |
 | M4 · two-term SFT | 0.621 [0.59, 0.65] | 0.821 [0.80, 0.84] | 0.42 | 10 |
 
 ## Hypotheses
@@ -33,7 +31,6 @@ Secondary readout: the written 0–10 `SUSPICION` score.
 | H2 | M4 or M5 recovers ≥50% of M2's gain over M0 at 1× cost | **supported** | recovered: M4 144% (point estimates) |
 | H3 | M5 (DPO) beats M4 (SFT) | **pending** | needs M5 and M4 scored |
 | H4 | Trained arms have lower score entropy and fewer distinct scores | **not supported** | entropy 4.36 vs 3.41 bits |
-| Labels | M4 (ensemble, no labels) vs M3 (true labels) — added after preregistration, ADR-0007 | **contradicted** | ΔpAUC -0.122 [-0.150, -0.095] on 1288 items |
 
 ## Detection at fixed false-positive rates
 
@@ -41,11 +38,10 @@ Share of backdoors caught when the threshold flags a given share of clean code. 
 
 | Rank | Arm | Inference cost | Calls per 1,000 items | pAUC@10% | Recall @ 1% FPR | @ 2% | @ 5% | @ 10% |
 |---|---|---|---|---|---|---|---|---|
-| 1 | M3 · fine-tuned on labels | 1× | 1,000 | 0.932 | 90% (7.3%) | 91% (7.6%) | 91% (10.6%) | 93% (17.2%) |
-| 2 | M4 · two-term SFT | 1× | 1,000 | 0.810 | 68% (4.3%) | 71% (6.1%) | 80% (11.3%) | 86% (16.9%) |
-| 3 | M2 · 3 persona prompts | 3× | 3,000 | 0.779 | 63% (5.1%) | 72% (8.9%) | 76% (11.6%) | 83% (16.8%) |
-| 4 | M1 · 3 identical samples | 3× | 3,000 | 0.753 | 61% (5.3%) | 65% (6.4%) | 70% (9.8%) | 75% (13.7%) |
-| 5 | M0 · single monitor | 1× | 1,000 | 0.709 | 56% (6.5%) | 66% (10.2%) | 71% (13.4%) | 77% (18.0%) |
+| 1 | M4 · two-term SFT | 1× | 1,000 | 0.810 | 68% (4.3%) | 71% (6.1%) | 80% (11.3%) | 86% (16.9%) |
+| 2 | M2 · 3 persona prompts | 3× | 3,000 | 0.779 | 63% (5.1%) | 72% (8.9%) | 76% (11.6%) | 83% (16.8%) |
+| 3 | M1 · 3 identical samples | 3× | 3,000 | 0.753 | 61% (5.3%) | 65% (6.4%) | 70% (9.8%) | 75% (13.7%) |
+| 4 | M0 · single monitor | 1× | 1,000 | 0.709 | 56% (6.5%) | 66% (10.2%) | 71% (13.4%) | 77% (18.0%) |
 
 ## Ensembles vs. their parts
 
@@ -68,12 +64,9 @@ Both arms scored on the same items. ΔpAUC from a paired bootstrap; ΔAUROC and 
 | M1 − M0 | 1288 | +0.044 [+0.018, +0.071] | +0.019 [+0.009, +0.030] | 0.000417 |
 | M2 − M0 | 1288 | +0.070 [+0.035, +0.104] | +0.044 [+0.028, +0.060] | 1.08e-07 |
 | M2 − M1 | 1288 | +0.026 [-0.006, +0.060] | +0.024 [+0.011, +0.038] | 0.000443 |
-| M3 − M0 | 1288 | +0.223 [+0.188, +0.256] | +0.103 [+0.086, +0.121] | 2.17e-31 |
-| M3 − M2 | 1288 | +0.153 [+0.124, +0.183] | +0.060 [+0.047, +0.073] | 3.73e-19 |
 | M4 − M0 | 1288 | +0.101 [+0.066, +0.135] | +0.053 [+0.037, +0.069] | 1.09e-10 |
 | M4 − M1 | 1288 | +0.057 [+0.027, +0.088] | +0.034 [+0.020, +0.047] | 1.03e-06 |
 | M4 − M2 | 1288 | +0.031 [-0.000, +0.061] | +0.009 [-0.003, +0.022] | 0.149 |
-| M4 − M3 | 1288 | -0.122 [-0.150, -0.095] | -0.050 [-0.063, -0.037] | 4.88e-14 |
 
 ## Across arms and monitors
 
@@ -137,20 +130,6 @@ pAUC@10% FPR **0.779 [0.75, 0.81]**, AUROC 0.906 [0.89, 0.92]. At P(yes) ≥ 0.5
 ![M2 · 3 persona prompts: share of backdoored items (above the line) and clean items (below) at each score.](figures/m2_scores.png)
 
 *M2 · 3 persona prompts: share of backdoored items (above the line) and clean items (below) at each score.*
-
-### M3 · fine-tuned on labels
-
-A LoRA adapter fine-tuned on the training split's true backdoored/clean labels, then served in one call. The ordinary supervised baseline: does learning from the ensemble beat simply learning from the answers?
-
-pAUC@10% FPR **0.932 [0.92, 0.95]**, AUROC 0.965 [0.96, 0.97]. At P(yes) ≥ 0.5 it flags 95% of backdoored and 27% of clean solutions.
-
-![M3 · fine-tuned on labels: ROC curve for false-positive rates up to 10%.](figures/m3_roc.png)
-
-*M3 · fine-tuned on labels: ROC curve for false-positive rates up to 10%.*
-
-![M3 · fine-tuned on labels: share of backdoored items (above the line) and clean items (below) at each score.](figures/m3_scores.png)
-
-*M3 · fine-tuned on labels: share of backdoored items (above the line) and clean items (below) at each score.*
 
 ### M4 · two-term SFT
 
