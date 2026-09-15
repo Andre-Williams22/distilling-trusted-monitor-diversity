@@ -359,7 +359,7 @@ ARMS: tuple[Arm, ...] = (
     Arm("m0", "Single baseline monitor", 1, (BASELINE_PROMPT,), False, 1),
     Arm("m1", "3x identical, mean-aggregated", 3, (BASELINE_PROMPT,), False, 3),
     Arm("m2", "3 persona prompts, mean-aggregated", 1, PERSONA_PROMPTS, False, 3),
-    Arm("m3", "Fine-tuned on true labels", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m3", "Two-term SFT from M1", 1, (BASELINE_PROMPT,), True, 1),
     Arm("m4", "Two-term SFT from teacher scores", 1, (BASELINE_PROMPT,), True, 1),
     Arm("m5", "DPO on consensus pairs", 1, (BASELINE_PROMPT,), True, 1),
 )

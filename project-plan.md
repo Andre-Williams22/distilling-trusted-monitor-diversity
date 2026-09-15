@@ -204,7 +204,7 @@ monitor has no consensus signal to internalize.
 | **M0** | Single baseline monitor | 1× | floor — anchor was 0.7226 on GPT-4.1-Mini; expect ~0.62–0.72 on Qwen-7B |
 | **M1** | 3× identical, mean-aggregated | 3× | +0.03 to +0.04 — the free win any trained arm must beat |
 | **M2** | 3 fixed, distinct persona prompts, mean-aggregated | 3× | +0.07 to +0.09 — the ceiling |
-| ~~M3~~ | ~~Fine-tuned on true labels~~ — **trained, then excluded from the analysis** (ADR-0007) | 1× | a deployed trusted monitor has no attack labels |
+| **M3** | **Two-term SFT distilled from M1** — the identical ensemble; every setting as M4 (ADR-0008; *follow-up, 15 Sep*) | **1×** | isolates diversity: does distilling a diverse teacher beat an identical one? |
 | **M4** | **Two-term SFT** — distilled from ensemble mean scores (ADR-0005) | **1×** | genuinely open — the honest test of whether distillation works at all |
 | **M5** | **DPO on consensus pairs** — distilled from ensemble debate (MACA-style, *not* MACA; ADR-0003) | **1×** | target: ≥60% of M2's gain |
 
@@ -212,7 +212,7 @@ monitor has no consensus signal to internalize.
 is now **M5**; M3 is the new label-supervised baseline. Anything dated before
 15 Sep that says "M3" means today's M5.
 
-**M3 was trained and then excluded** (15 Sep). It is the only arm that reads
+**M3 is the second, label-free M3** (ADR-0008). **An earlier M3 was trained and then excluded** (15 Sep). It is the only arm that reads
 ground-truth labels, and a trusted monitor in deployment has none for the
 attacks it faces. Because the exclusion came after its result — test pAUC 0.932,
 above M4's 0.810 — the numbers and the reasoning are recorded in ADR-0007

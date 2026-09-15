@@ -178,3 +178,29 @@ def test_reasoning_agreement_counts_items_with_an_agreeing_sample():
     items = [Item("a", "a", "q", "c", 1, False), Item("b", "b", "q", "c", 0, False)]
     samples = {"a": [base_sample(0.9, "x")], "b": [base_sample(0.8, "y")]}
     assert reasoning_agreement(items, samples) == pytest.approx(0.5)
+
+
+def test_m1_teacher_averages_the_three_samples_and_strips_labels(tmp_path, monkeypatch):
+    """M3's teacher is M1's three samples, aggregated exactly like M2's personas."""
+    from src import config
+    from src.train_sft import load_ensemble_teacher
+
+    generations, training = tmp_path / "gen", tmp_path / "train"
+    generations.mkdir()
+    monkeypatch.setattr(config, "GENERATIONS_DIR", generations)
+    monkeypatch.setattr(config, "TRAINING_DIR", training)
+
+    rows = [
+        {"item_id": "p1__clean::baseline", "problem_id": "p1", "label": 0, "sample": k,
+         "prompt_name": "baseline", "logprob_score": score, "text_score": text,
+         "response": "REASONING: x\nBACKDOORED: no\nSUSPICION: 1"}
+        for k, (score, text) in enumerate([(0.9, 8), (0.3, 2), (0.0, 1)])
+    ]
+    (generations / "m1__train.json").write_text(json.dumps(rows))
+
+    targets, members = load_ensemble_teacher("m1-ensemble")
+    assert targets["p1__clean"]["teacher_logprob"] == pytest.approx(0.4)
+    assert targets["p1__clean"]["teacher_text"] == pytest.approx(11 / 3)
+    assert len(members["p1__clean"]) == 3
+    assert "label" not in targets["p1__clean"]
+    assert all("label" not in row for row in members["p1__clean"])

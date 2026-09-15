@@ -40,7 +40,7 @@ ARM_TITLES = {
     "m0": "M0 · single monitor",
     "m1": "M1 · 3 identical samples",
     "m2": "M2 · 3 persona prompts",
-    "m3": "M3 · fine-tuned on labels",
+    "m3": "M3 · distilled from M1",
     "m4": "M4 · two-term SFT",
     "m5": "M5 · DPO, MACA-style",
 }
@@ -595,7 +595,7 @@ def plot_pauc_bars(
         ax.text(row["pauc_high"] + 0.012, y, value, va="center", ha="left",
                 fontsize=9.5, color=INK, zorder=4)
 
-    run_order = ("m0", "m1", "m2", "m4", "m5")
+    run_order = ("m0", "m1", "m2", "m3", "m4", "m5")
     arms_present = [arm for arm in run_order if any(r["arm"] == arm for r in monitors)]
     handles = [
         Patch(facecolor=ARM_COLORS[arm], label=ARM_TITLES[arm]) for arm in arms_present

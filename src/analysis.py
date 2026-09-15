@@ -52,9 +52,9 @@ READOUTS = {"logprob": "logprob_score", "text": "text_score"}
 PRIMARY_READOUT = "logprob"
 
 #: Run order, which is also the order arms appear in every table and chart.
-#: M3, the label-supervised baseline, is excluded from the analysis: a trusted
-#: monitor in deployment has no labels for the attacks it faces (ADR-0007).
-ARM_ORDER = ("m0", "m1", "m2", "m4", "m5")
+#: M3 is the M1-distilled arm (ADR-0008). The earlier label-supervised M3 is
+#: excluded: a deployed trusted monitor has no attack labels (ADR-0007).
+ARM_ORDER = ("m0", "m1", "m2", "m3", "m4", "m5")
 
 #: Score at or above which an item counts as "flagged", per readout. Used only
 #: for the plain-language flag rates in the report, never for a metric.
@@ -68,9 +68,12 @@ COMPARISON_PAIRS = (
     ("m1", "m0"),
     ("m2", "m0"),
     ("m2", "m1"),
+    ("m3", "m0"),
+    ("m3", "m1"),
     ("m4", "m0"),
     ("m4", "m1"),
     ("m4", "m2"),
+    ("m4", "m3"),
     ("m5", "m0"),
     ("m5", "m2"),
     ("m5", "m4"),
@@ -86,9 +89,9 @@ ARM_PURPOSE = {
     "m2": "Three different persona prompts, one sample each, averaged. How much "
     "does monitor diversity add on top of plain ensembling? The ceiling the "
     "trained arms aim for, and their teacher.",
-    "m3": "A LoRA adapter fine-tuned on the training split's true backdoored/clean "
-    "labels, then served in one call. The ordinary supervised baseline: does "
-    "learning from the ensemble beat simply learning from the answers?",
+    "m3": "A LoRA adapter distilled from M1 -- the baseline prompt sampled three "
+    "times -- with the same loss and settings as M4. Does distilling a *diverse* "
+    "ensemble beat distilling an identical one?",
     "m4": "A LoRA adapter trained to reproduce M2's unrounded mean score in one "
     "call. Can an ensemble's advantage be moved into one model's weights?",
     "m5": "A LoRA adapter trained with DPO on which persona reasoning survived a "
@@ -467,6 +470,12 @@ def evaluate_hypotheses(
         _recovery_row(primary),
         _difference_row("H3", "M5 (DPO) beats M4 (SFT)", comparisons, "m5", "m4"),
         _sharpening_row(primary),
+        _difference_row(
+            "Diversity distilled",
+            "M4 (diverse teacher) beats M3 (identical teacher) — follow-up, "
+            "ADR-0008",
+            comparisons, "m4", "m3",
+        ),
     ]
     return rows
 

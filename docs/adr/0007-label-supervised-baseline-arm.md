@@ -68,5 +68,5 @@ report is in commit `01c3dc0`; the run and its adapter are kept locally at
 `runs/2026-09-15__m3-sft-labels__9501200/`; the code path
 (`train-sft --targets labels`) remains.
 
-Numbering is unchanged: the DPO arm stays **M5**, and the M3 slot is retired
-rather than reused.
+Numbering is unchanged: the DPO arm stays **M5**. The M3 slot was then reused
+for a label-free control, distilled from M1 (ADR-0008).
