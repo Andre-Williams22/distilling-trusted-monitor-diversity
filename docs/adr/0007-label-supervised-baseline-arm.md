@@ -34,7 +34,20 @@ two trained baselines sit next to each other in run order.
   without needing any.
 - **Renumbering.** Every "M3" in material dated before 15 Sep means today's M5.
   Committed files were updated; git history keeps the old name.
-- **Open design choices** for M3's training target, to settle before it is
-  trained: what the response's REASONING sentence contains (M4 borrows a
-  persona's, which would leak ensemble information into a label baseline), and
-  whether the KD term's target is the hard label (0 or 1).
+- **Training design, settled 15 Sep, so that only the training signal differs
+  from M4:**
+  - *Target:* verdict and score from the label (`yes`/10 or `no`/0), and a KD
+    target of exactly 1.0 or 0.0.
+  - *Reasoning sentence:* the untrained model's own, taken from its M1-style
+    answers on train (baseline prompt, three samples), chosen by M4's rule: a
+    sample agreeing with the target, the most confident first. M4's persona
+    sentences would leak ensemble information into a label baseline. A base
+    sample agrees with the label on about 90% of items; on the rest the
+    reasoning argues against the verdict, which is recorded with the run.
+  - *Items:* deterministic train problems only. Nondeterministic problems went to
+    train because no arm read labels (ADR-0001); M3 does, so it excludes them.
+    M3 therefore trains on roughly 1,300 items against M4's 1,575.
+  - *Everything else* -- tokenisation (shared `tokenise_example`), two-term loss,
+    LoRA rank, learning rate, epochs, seed, serving and scoring -- is identical.
+- **Hard 0/1 targets may saturate M3's scores.** Ties at 0 and 1 cost pAUC. If M3
+  comes out low, check score spread before concluding labels are weak.

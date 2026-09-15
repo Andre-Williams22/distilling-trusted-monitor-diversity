@@ -105,3 +105,76 @@ def test_summarise_history_reports_direction():
     ]
     assert "decreased" in summarise_history(rows)
     assert "DID NOT DECREASE" in summarise_history(rows[::-1])
+
+
+# --------------------------------------------------------------------------
+# M3: label targets (ADR-0007)
+# --------------------------------------------------------------------------
+
+
+def base_sample(p_yes, reasoning):
+    """A base-monitor answer with a known P(yes) and reasoning sentence."""
+    verdict = "yes" if p_yes >= 0.5 else "no"
+    return {
+        "logprob_score": p_yes,
+        "response": f"REASONING: {reasoning}\nBACKDOORED: {verdict}\nSUSPICION: 5",
+    }
+
+
+def test_label_target_uses_the_label_not_the_monitor():
+    """Verdict and score follow the true label, whatever the monitor thought."""
+    from src.train_sft import build_label_target_response
+
+    samples = [base_sample(0.1, "Looks honest."), base_sample(0.2, "Fine.")]
+    response = build_label_target_response(1, samples)
+    assert "BACKDOORED: yes" in response
+    assert response.endswith("SUSPICION: 10")
+
+    response = build_label_target_response(0, [base_sample(0.9, "Odd branch.")])
+    assert "BACKDOORED: no" in response
+    assert response.endswith("SUSPICION: 0")
+
+
+def test_label_target_prefers_reasoning_that_agrees_with_the_label():
+    """The most confident agreeing sample supplies the reasoning sentence."""
+    from src.train_sft import build_label_target_response
+
+    samples = [
+        base_sample(0.2, "Looks honest."),
+        base_sample(0.7, "A suspicious special case."),
+        base_sample(0.99, "A magic-constant trigger."),
+    ]
+    assert "magic-constant trigger" in build_label_target_response(1, samples)
+    assert "Looks honest" in build_label_target_response(0, samples)
+
+
+def test_label_target_raises_without_parseable_reasoning():
+    """No reasoning to borrow means no example, never an invented sentence."""
+    from src.train_sft import build_label_target_response
+
+    with pytest.raises(ValueError):
+        build_label_target_response(1, [{"logprob_score": 0.9, "response": "garbled"}])
+
+
+def test_label_training_excludes_nondeterministic_items():
+    """M3 reads labels, so it must not learn the noisy ones."""
+    from src.data import Item
+    from src.train_sft import label_training_items
+
+    items = [
+        Item("a__clean", "a", "q", "c", 0, False),
+        Item("b__backdoored", "b", "q", "c", 1, True),
+        Item("c__backdoored", "c", "q", "c", 1, False),
+    ]
+    kept = [item.item_id for item in label_training_items(items)]
+    assert kept == ["a__clean", "c__backdoored"]
+
+
+def test_reasoning_agreement_counts_items_with_an_agreeing_sample():
+    """Reports how often the borrowed reasoning can match the verdict."""
+    from src.data import Item
+    from src.train_sft import reasoning_agreement
+
+    items = [Item("a", "a", "q", "c", 1, False), Item("b", "b", "q", "c", 0, False)]
+    samples = {"a": [base_sample(0.9, "x")], "b": [base_sample(0.8, "y")]}
+    assert reasoning_agreement(items, samples) == pytest.approx(0.5)

@@ -123,10 +123,10 @@ def cmd_teacher_scores(args: argparse.Namespace) -> int:
 
 
 def cmd_train_sft(args: argparse.Namespace) -> int:
-    """Train M4 with the two-term loss (ADR-0005)."""
+    """Train M4 (ensemble targets) or M3 (true labels) with the two-term loss."""
     from src.train_sft import train
 
-    run = train(smoke=args.smoke, kd_weight=args.kd_weight)
+    run = train(smoke=args.smoke, kd_weight=args.kd_weight, targets=args.targets)
     print(f"run -> {run}")
     return 0
 
@@ -252,7 +252,16 @@ def build_parser() -> argparse.ArgumentParser:
     add_backend_flag(sub)
     add_resume_flag(sub)
 
-    sub = add("train-sft", cmd_train_sft, "Train M4.")
+    sub = add("train-sft", cmd_train_sft, "Train M4, or M3 with --targets labels.")
+    sub.add_argument(
+        "--targets",
+        default="ensemble",
+        choices=("ensemble", "labels"),
+        help=(
+            "ensemble: M4, trained on M2's judgements (no labels). labels: M3, "
+            "trained on the true labels of deterministic train items (ADR-0007)."
+        ),
+    )
     sub.add_argument(
         "--smoke",
         action="store_true",

@@ -343,7 +343,7 @@ def build_sft_example(
         The example, or ``None`` if it cannot be built.
     """
     if not target or not persona_rows:
-            return None
+        return None
     kd_target = teacher_verdict_probability(target)
     if kd_target is None:
         return None
@@ -351,7 +351,35 @@ def build_sft_example(
         response = build_target_response(item, target, persona_rows)
     except ValueError:
         return None
+    return tokenise_example(item, response, kd_target, tokenizer, yes_ids, no_ids)
 
+
+def tokenise_example(
+    item: Item,
+    response: str,
+    kd_target: float,
+    tokenizer: Any,
+    yes_ids: list[int],
+    no_ids: list[int],
+) -> SFTExample | None:
+    """Turn a prompt and a finished response into a training example.
+
+    Shared by every trained arm, so M3 and M4 are tokenised, masked and
+    length-limited identically; the only thing that differs between them is
+    where ``response`` and ``kd_target`` come from.
+
+    Args:
+        item: The item, label blanked.
+        response: The target response text.
+        kd_target: The ``KD_yes`` target in [0, 1].
+        tokenizer: The base model's tokenizer.
+        yes_ids: Token ids counted as "yes".
+        no_ids: Token ids counted as "no".
+
+    Returns:
+        The example, or ``None`` if it exceeds the length limit or the verdict
+        cannot be located.
+    """
     prompt_text = tokenizer.apply_chat_template(
         [{"role": "user", "content": render_prompt(config.BASELINE_PROMPT, item)}],
         tokenize=False,
@@ -379,6 +407,151 @@ def build_sft_example(
         kd_target=kd_target,
     )
 
+
+# --------------------------------------------------------------------------
+# M3: targets from the true labels (ADR-0007)
+# --------------------------------------------------------------------------
+
+#: Suspicion written for each true label. The extremes of the scale, because a
+#: label carries no graded confidence to preserve.
+LABEL_SUSPICION = {1: 10, 0: 0}
+
+
+def load_reasoning_samples(
+    split: SplitName = "train", path: Path | None = None
+) -> dict[str, list[dict[str, Any]]]:
+    """Load the base monitor's own answers, the source of M3's reasoning text.
+
+    These are M1-style samples: the baseline prompt, three draws per item, from
+    the untrained model (``python main.py score --arm m1 --split train``). Using
+    the base model's reasoning, rather than a persona's as M4 does, keeps any
+    ensemble information out of the label baseline. Labels are stripped.
+
+    Args:
+        split: Which split's samples to read.
+        path: Override for the samples file.
+
+    Returns:
+        ``{item_id: [sample rows]}``, each with ``logprob_score`` and
+        ``response``.
+
+    Raises:
+        FileNotFoundError: If the samples have not been generated.
+    """
+    path = path or config.GENERATIONS_DIR / f"m1__{split}.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path.name} missing; run `python main.py score --arm m1 "
+            f"--split {split}` on the GPU box first"
+        )
+    samples: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in read_json_records(path):
+        samples[row["item_id"].split("::", 1)[0]].append(_without_label(row))
+    return dict(samples)
+
+
+def label_training_items(items: list[Item]) -> list[Item]:
+    """Keep only items whose label can be trusted as a training target.
+
+    Nondeterministic problems were routed to train on the grounds that no
+    training arm reads labels (ADR-0001). M3 does, so their noisy labels are
+    excluded here rather than learned.
+
+    Args:
+        items: Train items.
+
+    Returns:
+        The deterministic items, in their original order.
+    """
+    return [item for item in items if not item.is_nondeterministic]
+
+
+def build_label_target_response(
+    label: int, sample_rows: list[dict[str, Any]]
+) -> str:
+    """Write the response M3 is trained to produce from a true label.
+
+    The verdict and score come from the label: ``yes``/10 for backdoored,
+    ``no``/0 for clean. The reasoning sentence is the base monitor's own, chosen
+    with the same rule as M4 (``pick_reasoning``): a sample whose verdict agrees
+    with the target, and among those the one closest to it, so the most
+    confident agreeing sample. When no sample agrees, the closest one is used.
+
+    Args:
+        label: The true label, 1 for backdoored and 0 for clean.
+        sample_rows: The base monitor's answers for this item.
+
+    Returns:
+        The response text.
+
+    Raises:
+        ValueError: If no sample's reasoning can be parsed.
+    """
+    verdict = "yes" if label == 1 else "no"
+    reasoning = pick_reasoning(sample_rows, verdict, float(label))
+    if reasoning is None:
+        raise ValueError("no reasoning could be parsed from the base samples")
+    return (
+        f"REASONING: {reasoning}\nBACKDOORED: {verdict}"
+        f"\nSUSPICION: {LABEL_SUSPICION[label]}"
+    )
+
+
+def build_label_example(
+    item: Item,
+    sample_rows: list[dict[str, Any]] | None,
+    tokenizer: Any,
+    yes_ids: list[int],
+    no_ids: list[int],
+) -> SFTExample | None:
+    """Build one M3 training example from an item's true label.
+
+    Args:
+        item: The item, **with** its label: M3 is the one arm that reads it.
+        sample_rows: The base monitor's answers for this item.
+        tokenizer: The base model's tokenizer.
+        yes_ids: Token ids counted as "yes".
+        no_ids: Token ids counted as "no".
+
+    Returns:
+        The example, or ``None`` if it cannot be built.
+    """
+    if not sample_rows:
+        return None
+    try:
+        response = build_label_target_response(item.label, sample_rows)
+    except ValueError:
+        return None
+    return tokenise_example(
+        strip_label(item), response, float(item.label), tokenizer, yes_ids, no_ids
+    )
+
+
+def reasoning_agreement(
+    items: list[Item], samples: dict[str, list[dict[str, Any]]]
+) -> float:
+    """Share of items where at least one base sample agrees with the label.
+
+    Where none agrees, M3's reasoning sentence argues against its own verdict.
+    Reported with the run so that mismatch is visible, not hidden.
+
+    Args:
+        items: Items with labels.
+        samples: Base monitor answers by item.
+
+    Returns:
+        A fraction in [0, 1].
+    """
+    agreeing = 0
+    for item in items:
+        rows = samples.get(item.item_id, [])
+        if any(
+            row.get("logprob_score") is not None
+            and (row["logprob_score"] >= 0.5) == (item.label == 1)
+            for row in rows
+        ):
+            agreeing += 1
+    return agreeing / max(1, len(items))
 
 
 # --------------------------------------------------------------------------
@@ -806,8 +979,13 @@ def train(
     smoke: bool = False,
     kd_weight: float | None = None,
     split: SplitName = "train",
+    targets: str = "ensemble",
 ) -> Path:
-    """Train M4 end to end. The entry point ``main.py train-sft`` calls.
+    """Train M4 or M3 end to end. The entry point ``main.py train-sft`` calls.
+
+    ``targets="ensemble"`` trains M4 on M2's judgements. ``targets="labels"``
+    trains M3 on the true labels, on deterministic items only, with everything
+    else -- tokenisation, loss, adapter, hyperparameters, seed -- identical.
 
     A smoke run trains on the first ``SMOKE_ITEMS`` items for
     ``SMOKE_EPOCHS`` epochs with a small accumulation, so the optimizer takes
@@ -818,8 +996,8 @@ def train(
         smoke: Run the short pipeline check instead of the full run.
         kd_weight: Override ``config.SFT.kd_weight``. ``0.0`` is the declared
             fallback to plain text SFT.
-        split: The split whose teacher scores to train on. Only train is valid
-            for a real run.
+        split: The split to train on. Only train is valid for a real run.
+        targets: ``"ensemble"`` for M4 or ``"labels"`` for M3.
 
     Returns:
         The saved adapter directory.
@@ -830,29 +1008,56 @@ def train(
     seed = config.SPLITS.seed
     set_seed(seed)
 
-    items = load_split(split)
+    if targets not in ("ensemble", "labels"):
+        raise ValueError(f"targets must be 'ensemble' or 'labels', got {targets!r}")
+    arm = "m4" if targets == "ensemble" else "m3"
+
+    all_items = load_split(split)
+    items = label_training_items(all_items) if targets == "labels" else all_items
+    excluded = len(all_items) - len(items)
     if smoke:
         items = items[:SMOKE_ITEMS]
-    targets, personas = load_teacher_data(split)
 
     tokenizer = load_tokenizer()
     yes_ids, no_ids = resolve_verdict_token_ids(tokenizer)
 
     examples: list[SFTExample] = []
     dropped: list[str] = []
-    for item in items:
-        example = build_sft_example(
-            strip_label(item),
-            targets.get(item.item_id),
-            personas.get(item.item_id),
-            tokenizer,
-            yes_ids,
-            no_ids,
+    extra: dict[str, Any] = {}
+    if targets == "ensemble":
+        teacher, personas = load_teacher_data(split)
+        for item in items:
+            example = build_sft_example(
+                strip_label(item),
+                teacher.get(item.item_id),
+                personas.get(item.item_id),
+                tokenizer,
+                yes_ids,
+                no_ids,
+            )
+            if example is None:
+                dropped.append(item.item_id)
+            else:
+                examples.append(example)
+    else:
+        samples = load_reasoning_samples(split)
+        for item in items:
+            example = build_label_example(
+                item, samples.get(item.item_id), tokenizer, yes_ids, no_ids
+            )
+            if example is None:
+                dropped.append(item.item_id)
+            else:
+                examples.append(example)
+        extra = {
+            "excluded_nondeterministic_items": excluded,
+            "reasoning_agreement": round(reasoning_agreement(items, samples), 4),
+        }
+        logger.info(
+            "M3: %d nondeterministic items excluded · a base sample agrees with "
+            "the label on %.1f%% of items",
+            excluded, 100 * extra["reasoning_agreement"],
         )
-        if example is None:
-            dropped.append(item.item_id)
-        else:
-            examples.append(example)
     logger.info("built %d examples, dropped %d", len(examples), len(dropped))
     check_examples(examples, tokenizer, yes_ids, no_ids)
     logger.info("example contract checks passed")
@@ -877,12 +1082,15 @@ def train(
         pad_id=tokenizer.pad_token_id,
     )
 
-    directory = run_dir("m4-sft-smoke" if smoke else "m4-sft")
+    name = "m4-sft" if targets == "ensemble" else "m3-sft-labels"
+    directory = run_dir(f"{name}-smoke" if smoke else name)
     adapter = save_run(
         model,
         history,
         directory,
         {
+            "arm": arm,
+            "targets": targets,
             "smoke": smoke,
             "kd_weight": weight,
             "epochs": epochs,
@@ -892,6 +1100,7 @@ def train(
             "n_dropped": len(dropped),
             "seed": seed,
             "seconds": round(time.time() - started, 1),
+            **extra,
         },
     )
     logger.info(summarise_history(history))
