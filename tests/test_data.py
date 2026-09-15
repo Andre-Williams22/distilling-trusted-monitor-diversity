@@ -102,7 +102,7 @@ def test_nondeterministic_problems_all_land_in_train(problems, config):
     """Noisy labels are free in train and toxic in val and test.
 
     No training arm reads a ground-truth label -- M4 regresses onto teacher
-    scores and M3's pairs come from monitor consensus -- so label noise cannot
+    scores and M5's pairs come from monitor consensus -- so label noise cannot
     reach the training signal. It would corrupt val thresholds and every test
     metric.
     """

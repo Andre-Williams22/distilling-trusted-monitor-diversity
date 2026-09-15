@@ -149,7 +149,7 @@ class VLLMBackend:
         Args:
             model: Model name as the server advertises it.
             serving: Host, port and timeouts.
-            adapter: LoRA adapter name for M3/M4, served by vLLM alongside the
+            adapter: LoRA adapter name for M3, M4 and M5, served by vLLM alongside the
                 base model. ``None`` for the untrained arms.
         """
         self.model = adapter or model
@@ -724,7 +724,7 @@ def _arm_by_name(name: str) -> Arm:
     """Look up an arm's configuration.
 
     Args:
-        name: Arm id, ``"m0"``..``"m4"``.
+        name: Arm id, ``"m0"``..``"m5"``.
 
     Returns:
         Its ``Arm`` record.
@@ -756,7 +756,7 @@ def score_arm(
     Args:
         arm: Arm id.
         split: Which split to score.
-        adapter: LoRA adapter path for m3/m4.
+        adapter: LoRA adapter name for m3, m4 and m5.
         resume: Skip items already scored.
         backend_name: ``"vllm"`` or ``"mlx"``.
         limit: Score only the first N items. For pilots -- the subset is the

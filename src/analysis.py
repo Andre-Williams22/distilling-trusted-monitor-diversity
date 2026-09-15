@@ -52,7 +52,7 @@ READOUTS = {"logprob": "logprob_score", "text": "text_score"}
 PRIMARY_READOUT = "logprob"
 
 #: Run order, which is also the order arms appear in every table and chart.
-ARM_ORDER = ("m0", "m1", "m2", "m4", "m3")
+ARM_ORDER = ("m0", "m1", "m2", "m3", "m4", "m5")
 
 #: Score at or above which an item counts as "flagged", per readout. Used only
 #: for the plain-language flag rates in the report, never for a metric.
@@ -66,12 +66,16 @@ COMPARISON_PAIRS = (
     ("m1", "m0"),
     ("m2", "m0"),
     ("m2", "m1"),
+    ("m3", "m0"),
+    ("m3", "m2"),
     ("m4", "m0"),
     ("m4", "m1"),
     ("m4", "m2"),
-    ("m3", "m0"),
-    ("m3", "m2"),
-    ("m3", "m4"),
+    ("m4", "m3"),
+    ("m5", "m0"),
+    ("m5", "m2"),
+    ("m5", "m3"),
+    ("m5", "m4"),
 )
 
 ARM_PURPOSE = {
@@ -84,9 +88,12 @@ ARM_PURPOSE = {
     "m2": "Three different persona prompts, one sample each, averaged. How much "
     "does monitor diversity add on top of plain ensembling? The ceiling the "
     "trained arms aim for, and their teacher.",
+    "m3": "A LoRA adapter fine-tuned on the training split's true backdoored/clean "
+    "labels, then served in one call. The ordinary supervised baseline: does "
+    "learning from the ensemble beat simply learning from the answers?",
     "m4": "A LoRA adapter trained to reproduce M2's unrounded mean score in one "
     "call. Can an ensemble's advantage be moved into one model's weights?",
-    "m3": "A LoRA adapter trained with DPO on which persona reasoning survived a "
+    "m5": "A LoRA adapter trained with DPO on which persona reasoning survived a "
     "debate (MACA-style). Does distilling deliberation beat distilling scores?",
 }
 
@@ -460,19 +467,25 @@ def evaluate_hypotheses(
             comparisons, "m2", "m1",
         ),
         _recovery_row(primary),
-        _difference_row("H3", "M3 (DPO) beats M4 (SFT)", comparisons, "m3", "m4"),
+        _difference_row("H3", "M5 (DPO) beats M4 (SFT)", comparisons, "m5", "m4"),
         _sharpening_row(primary),
+        _difference_row(
+            "Labels",
+            "M4 (ensemble, no labels) vs M3 (true labels) — added after "
+            "preregistration, ADR-0007",
+            comparisons, "m4", "m3",
+        ),
     ]
     return rows
 
 
 def _recovery_row(primary: dict[str, dict[str, Any]]) -> dict[str, str]:
     """H2: does a 1x trained arm recover at least half of M2's gain over M0."""
-    claim = "M3 or M4 recovers ≥50% of M2's gain over M0 at 1× cost"
-    trained = [arm for arm in ("m4", "m3") if arm in primary]
+    claim = "M4 or M5 recovers ≥50% of M2's gain over M0 at 1× cost"
+    trained = [arm for arm in ("m4", "m5") if arm in primary]
     if "m0" not in primary or "m2" not in primary or not trained:
         return {"id": "H2", "claim": claim, "status": "pending",
-                "evidence": "needs M0, M2 and at least one of M3/M4 scored"}
+                "evidence": "needs M0, M2 and at least one of M4/M5 scored"}
 
     baseline, ceiling = primary["m0"]["pauc"], primary["m2"]["pauc"]
     try:
@@ -495,7 +508,7 @@ def _recovery_row(primary: dict[str, dict[str, Any]]) -> dict[str, str]:
 def _sharpening_row(primary: dict[str, dict[str, Any]]) -> dict[str, str]:
     """H4: do trained arms show lower score entropy than untrained ones."""
     claim = "Trained arms have lower score entropy and fewer distinct scores"
-    trained = [primary[a] for a in ("m3", "m4") if a in primary]
+    trained = [primary[a] for a in ("m4", "m5") if a in primary]
     untrained = [primary[a] for a in ("m0", "m1", "m2") if a in primary]
     if not trained or not untrained:
         return {"id": "H4", "claim": claim, "status": "pending",

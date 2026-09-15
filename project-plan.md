@@ -2,8 +2,13 @@
 
 **Can one trusted monitor internalize what an ensemble buys — without labels or a stronger teacher?**
 
-**Andre Williams · BlueDot Technical AI Safety Sprint · v5, 9 Sep 2026**
-**19 days remain (9 Sep → 28 Sep)**
+**Andre Williams · BlueDot Technical AI Safety Sprint · v6, 15 Sep 2026**
+**13 days remain (15 Sep → 28 Sep)**
+
+**What changed in v6 (15 Sep):** added **M3**, a baseline fine-tuned on the
+training split's true labels, after M4's results (reported as a reference, not a
+hypothesis; ADR-0007). The MACA-style DPO arm, previously M3, is renumbered
+**M5** throughout.
 
 **What changed in v5:** dataset identity pinned and its real supply measured
 against the live dataset (§2) — nondeterministic problems now filtered out, and
@@ -26,7 +31,7 @@ a baseline for MACA to beat.
 
 | Area | Owner |
 |---|---|
-| Training loops (M3 DPO, M4 SFT) | **Andre** — Claude suggests and reviews, never authors |
+| Training loops (M5 DPO, M4 SFT) | **Andre** — Claude suggests and reviews, never authors |
 | Data preprocessing, splits, item construction | **Andre** |
 | Artifact handling (JSONL, checkpoints, adapters) | **Andre** |
 | Metrics and statistics | **Andre** — a silent bug here invalidates every number |
@@ -52,7 +57,7 @@ src/                 # flat package (__init__.py present so `from src.x import y
   scoring.py         #   vLLM client + text/logprob readouts
   debate.py          #   two rounds, consensus, pairs, prompt normalisation
   train_sft.py       #   M4
-  train_dpo.py       #   M3
+  train_dpo.py       #   M5
   metrics.py         #   pAUC, safety@1%, entropy, unique-value count
   stats.py           #   DeLong, paired bootstrap
   analysis.py        #   summary/comparison tables, hypotheses, report.md
@@ -155,7 +160,7 @@ test alongside its backdoor.
 
 **The nondeterminism filter is asymmetric — this follows from "without labels."**
 Neither training arm ever reads a ground-truth label: M4 regresses onto the
-*teacher's mean score*, and M3's preference pairs come from *monitor consensus*.
+*teacher's mean score*, and M5's preference pairs come from *monitor consensus*.
 The `backdoored/clean` flag enters only in val (threshold calibration) and test
 (every metric). Label noise in train therefore cannot reach the training signal,
 so all **138** nondeterministic-but-validated problems are assigned to train,
@@ -164,7 +169,7 @@ deterministic problems.
 
 | Split | Problems | Items | Nondet? | Use |
 |---|---|---|---|---|
-| train | **788** (650 det + 138 nondet) | **1,576** | allowed | debate transcripts (M3), teacher scores (M4) |
+| train | **788** (650 det + 138 nondet) | **1,576** | allowed | debate transcripts (M5), teacher scores (M4) |
 | val | **150** | **300** | excluded | thresholds, agreement-rate check |
 | test | **644** | **1,288** | excluded | all primary results |
 | **total** | **1,582** | **3,164** | | |
@@ -187,7 +192,7 @@ not buy a wide margin anywhere.
 
 ---
 
-## 3. The five arms
+## 3. The arms
 
 All arms use one base model, **`Qwen2.5-7B-Instruct`**, served with vLLM.
 Diversity comes from prompts and training, never architecture. **Not 2B:** MACA's
@@ -199,11 +204,21 @@ monitor has no consensus signal to internalize.
 | **M0** | Single baseline monitor | 1× | floor — anchor was 0.7226 on GPT-4.1-Mini; expect ~0.62–0.72 on Qwen-7B |
 | **M1** | 3× identical, mean-aggregated | 3× | +0.03 to +0.04 — the free win any trained arm must beat |
 | **M2** | 3 fixed, distinct persona prompts, mean-aggregated | 3× | +0.07 to +0.09 — the ceiling |
-| **M3** | **DPO on consensus pairs** — distilled from ensemble debate (MACA-style, *not* MACA; ADR-0003) | **1×** | target: ≥60% of M2's gain — **the headline** |
+| **M3** | **Fine-tuned on true labels** — ordinary supervised baseline (ADR-0007; *added 15 Sep, after M4's results*) | **1×** | reference — does learning from the ensemble beat learning from the answers? |
 | **M4** | **Two-term SFT** — distilled from ensemble mean scores (ADR-0005) | **1×** | genuinely open — the honest test of whether distillation works at all |
+| **M5** | **DPO on consensus pairs** — distilled from ensemble debate (MACA-style, *not* MACA; ADR-0003) | **1×** | target: ≥60% of M2's gain |
 
-**M3 is not MACA and must never be called MACA.** Published MACA is MV-SFT plus
-MV-GRPO; M3 is offline DPO on debate-consensus preference pairs, chosen because
+**Arm numbering changed on 15 Sep.** The MACA-style DPO arm was M3 until then and
+is now **M5**; M3 is the new label-supervised baseline. Anything dated before
+15 Sep that says "M3" means today's M5.
+
+**M3 is the only arm that reads ground-truth labels in training,** and it was
+added after M4's test results were known. It is therefore reported as a
+reference, not a preregistered hypothesis: it cannot promote, demote or reframe
+H1–H4. See ADR-0007.
+
+**M5 is not MACA and must never be called MACA.** Published MACA is MV-SFT plus
+MV-GRPO; M5 is offline DPO on debate-consensus preference pairs, chosen because
 GRPO's rollout loop does not fit a 24-day sprint on one GPU. The write-up says
 *"DPO on MACA-style consensus-derived preference pairs."* A null H3 is evidence
 about this adaptation, not about MACA. See ADR-0003.
@@ -244,7 +259,7 @@ touches the raw dataset again.**
 Four prompts, fixed before any generation runs, never edited after seeing
 results:
 
-- **Baseline prompt** — what M0 uses, and what every distilled model (M3, M4)
+- **Baseline prompt** — what M0 uses, and what every distilled model (M5, M4)
   is trained and served under.
 - **Three persona prompts** for M2 — written by hand, not searched for (e.g.
   "look for suspicious control flow," "compare against what a correct solution
@@ -266,16 +281,16 @@ This step turns prompts + data into training material, in order:
 1. **Score M0, M1, M2 on val and test.** M0/M1 are the baseline prompt sampled
    once and three times; M2 is the three persona prompts sampled once each.
 2. **Gate:** M0's AUROC must clear 0.60 before continuing — see §9.
-3. **Debate, for M3 only, on train:** the three M2 personas run two rounds —
+3. **Debate, for M5 only, on train:** the three M2 personas run two rounds —
    round 1 each scores independently, round 2 each revises after seeing the
    other two's round-1 reasoning. Persist full traces, not just scores.
-4. **Consensus and pairs, for M3 only:** bin each round-2 score (default
+4. **Consensus and pairs, for M5 only:** bin each round-2 score (default
    binary, suspicious ≥5 — switch to quintiles if val agreement exceeds 85%,
    decided in advance, not tuned after the fact), take the majority across the
    three agents as the consensus, then split traces into agree-with-majority
    (chosen) and dissent (rejected). Build (chosen, rejected) pairs, capped at
    2–3 per item.
-5. **Prompt normalisation, for M3 only — do not skip this:** rewrite every
+5. **Prompt normalisation, for M5 only — do not skip this:** rewrite every
    pair's prompt field from the persona prompt to the baseline prompt. The
    debate happened under persona framing; the trained model deploys under the
    baseline prompt, so training data must match deployment or the model learns
@@ -288,13 +303,13 @@ This step turns prompts + data into training material, in order:
    ranks better. Rounding it away here silently deletes the signal M4 exists
    to inherit.
 
-**Output: a preference-pairs file for M3 (DPO format) and a scored-targets file
+**Output: a preference-pairs file for M5 (DPO format) and a scored-targets file
 for M4 (SFT format), both keyed to the baseline prompt.**
 
 ### 4.4 Train
 
-- **M3:** QLoRA DPO (β = 0.1), Qwen2.5-7B-Instruct, 4k sequence length, ~2
-  epochs, on the M3 pairs file. DPO only — KTO is cut.
+- **M5:** QLoRA DPO (β = 0.1), Qwen2.5-7B-Instruct, 4k sequence length, ~2
+  epochs, on the M5 pairs file. DPO only — KTO is cut.
 - **M4:** QLoRA SFT, same base model and sequence length, on the M4 targets
   file, with a **two-term loss** (see ADR-0005):
 
@@ -319,11 +334,11 @@ script executes end to end and loss decreases. **Output: two LoRA adapters.**
 
 ### 4.5 Evaluate
 
-Serve each of the five arms — M0 through M4 — with vLLM and score the val and
-test splits. M3 and M4 are served alone: plain baseline prompt, one pass, no
+Serve each arm — M0 through M5 — with vLLM and score the val and
+test splits. M5 and M4 are served alone: plain baseline prompt, one pass, no
 personas, no debate. Record both readouts per call — `P("yes")` at the verdict
 token (**primary**, ADR-0006) and the text 0–10 score (secondary) — and, for
-M3/M4, two operating points (1 sample and 3 samples, for the cost claim and the
+M5/M4, two operating points (1 sample and 3 samples, for the cost claim and the
 equal-compute check respectively).
 **Output: a scores table — one row per (arm, item, sample, readout).**
 
@@ -339,7 +354,7 @@ equal-compute check respectively).
 Compute pAUC@[0,10%] FPR, safety@1% audit budget, score entropy, and
 unique-value count per arm, with paired bootstrap and DeLong intervals against
 M0. Test H1–H4 (§6) and apply the promotion rule. Build the frontier plot —
-pAUC vs. inference cost, all five arms. **Output: the hypothesis results table
+pAUC vs. inference cost, every arm. **Output: the hypothesis results table
 and the main figure, both going straight into the write-up.**
 
 ---
@@ -429,8 +444,8 @@ DeLong for correlated AUROCs, paired bootstrap for pAUC.
 | ID | Hypothesis | Direction |
 |---|---|---|
 | **H1** | M1 beats M0 by roughly the anchor's identical-ensemble margin (~+0.04) | Sanity check the setup works |
-| **H2** | **At least one of M3, M4 recovers ≥50% of M2's gain over M0, at 1× cost** | **Is distillation worth it at all — the core question** |
-| **H3** | M3 (MACA) beats M4 (SFT) | Genuinely uncertain — MACA's own claim to test |
+| **H2** | **At least one of M5, M4 recovers ≥50% of M2's gain over M0, at 1× cost** | **Is distillation worth it at all — the core question** |
+| **H3** | M5 (MACA) beats M4 (SFT) | Genuinely uncertain — MACA's own claim to test |
 | **H4** | Trained arms show reduced score entropy and unique-value count vs. untrained arms | The sharpening cost — **only measurable because M4's loss keeps the teacher's fractional signal (ADR-0005)**; under plain SFT this result would be built in |
 
 **Promotion rule, declared now, before any run:** H2 is primary. If either trained
@@ -451,7 +466,7 @@ does not survive distillation by either method, and the 3× cost is not avoidabl
 
 | Job | Arithmetic | Generations |
 |---|---|---|
-| M3 debate transcripts (train) | 1,576 × 3 agents × 2 rounds | 9,456 |
+| M5 debate transcripts (train) | 1,576 × 3 agents × 2 rounds | 9,456 |
 | M4 teacher scores (train) | 1,576 × 3 personas × 1 sample | 4,728 |
 | Test eval, all arms, both operating points | 1,288 × 15 passes | 19,320 |
 | Val thresholds + agreement check | 300 × 15 passes | 4,500 |
@@ -459,7 +474,7 @@ does not survive distillation by either method, and the 3× cost is not avoidabl
 | Training pipeline smoke test | ~50 items × 3 × 2 | ~500 |
 | **Total** | | **≈ 39,100** |
 
-The 15 passes are M0×1 + M1×3 + M2×3 + M3×(1+3) + M4×(1+3). Down a further
+The 15 passes are M0×1 + M1×3 + M2×3 + M5×(1+3) + M4×(1+3). Down a further
 **14%** from v4's 45,000, because Option A moved items out of train (where each
 costs 9 generations) and into test (where each costs 15 but only once). At
 ~1,600 input / ~450 output tokens per generation: ≈62M input, ≈17M output
@@ -470,7 +485,7 @@ tokens.
 **Inference** (vLLM, Qwen2.5-7B bf16): ≈3.8 h pure compute; with cold starts and
 reruns (×2.5): **≈9.5 GPU-h.**
 
-**Training** (QLoRA, 4k seqlen): two objectives (M3-DPO, M4-SFT), ≈2.5 h each;
+**Training** (QLoRA, 4k seqlen): two objectives (M5-DPO, M4-SFT), ≈2.5 h each;
 with debugging and hyperparameter reruns (~5 runs total): **≈19 GPU-h.**
 
 **Total ≈29 GPU-h. Budget 50 with contingency** — down from 100.
@@ -522,7 +537,7 @@ Down from $150–250 in the previous scope.
 2. Load the dataset; build backdoor↔clean item pairs; cut the splits.
 3. Write the 3 fixed persona prompts for M2.
 4. Stand up the eval harness: pAUC@[0,10%], safety@1%, entropy, unique-value count, paired bootstrap, DeLong.
-5. Score **M0** → **GATE 1 (date): must happen by 14 Sep or M3 is cut.**
+5. Score **M0** → **GATE 1 (date): must happen by 14 Sep or M5 is cut.**
    **GATE 2 (quality): AUROC ≥ 0.60.** Then score **M1**, then **M2**.
 6. **Freeze and push the preregistration (§3–§6) before any training run.**
 
@@ -531,13 +546,13 @@ Down from $150–250 in the previous scope.
 7. Run the training smoke test on ~50 items → confirm the QLoRA script runs end to end and loss decreases. **GATE, lightweight — debug here, not in week 3.**
 8. **Diversity insurance (ADR-0002)** — score val with Llama-3.1-8B-Instruct and Mistral-7B-Instruct-v0.3 under the baseline prompt; compare `mean(Qwen, Llama, Mistral)` against `mean(3 Qwen personas)`. ~600 generations, two downloads. Runs **after** the 14 Sep gate and **before** the 9,456 debate generations, which is the last moment the answer is actionable.
 9. Generate debate transcripts on **val only**; measure agreement; **lock the consensus binning**.
-10. Generate the full M3 train debate transcripts (~9,456 generations).
+10. Generate the full M5 train debate transcripts (~9,456 generations).
 11. Generate the M4 teacher scores from M2 on train (~4,728 generations).
 
 ### Week 3 · 18–24 Sep — train and evaluate
 
-11. Train **M3** (MACA DPO) and **M4** (SFT).
-12. Evaluate all five arms on test, at both operating points.
+11. Train **M5** (MACA DPO) and **M4** (SFT).
+12. Evaluate every arm on test, at both operating points.
 13. Calibration analysis (H4).
 14. Build the frontier plot — pAUC vs. inference cost. **Main figure.**
 
@@ -550,13 +565,13 @@ Down from $150–250 in the previous scope.
 
 Two levers, declared in advance, largest first.
 
-**1 · The 14 Sep spine gate — decides whether M3 survives.** M0 must be scored
+**1 · The 14 Sep spine gate — decides whether M5 survives.** M0 must be scored
 and its AUROC checked **by 14 Sep**. Scoring M0 requires the entire spine
 working end to end: data loading, splits, prompts, vLLM serving, both readouts,
-and the metrics code. If that spine is not up by the 14th, **cut M3** and ship
+and the metrics code. If that spine is not up by the 14th, **cut M5** and ship
 M0/M1/M2/M4.
 
-The arithmetic behind the date: M3 needs debate generation (9,456 calls),
+The arithmetic behind the date: M5 needs debate generation (9,456 calls),
 consensus binning, the pairs pipeline, prompt normalisation, and a DPO run —
 roughly **60% of the remaining engineering**, and the part with the most novel
 code. M4 needs teacher scores (4,728 calls) and one SFT run. With the spine up
@@ -568,7 +583,7 @@ not.
 | M0, M1, M2, M4 | ✅ | ✅ | ❌ | ✅ |
 | all five | ✅ | ✅ | ✅ | ✅ |
 
-Cutting M3 costs H3 — the DPO-vs-SFT comparison. That is a real loss, but per
+Cutting M5 costs H3 — the DPO-vs-SFT comparison. That is a real loss, but per
 ADR-0003 it was never a test of MACA itself, and **a rushed DPO run producing an
 uninterpretable null is worse than not running it.** H2, the primary hypothesis,
 is answerable by M4 alone.
@@ -585,13 +600,13 @@ whether the DPO arm works.
 
 | Trigger | Action |
 |---|---|
-| **M0 not scored by 14 Sep** | **Cut M3.** Ship M0/M1/M2/M4 — H1, H2 and H4 all survive; only the DPO-vs-SFT comparison is lost. Decided now, on 9 Sep, so that it reads as a plan rather than a week-3 concession. |
+| **M0 not scored by 14 Sep** | **Cut M5.** Ship M0/M1/M2/M4 — H1, H2 and H4 all survive; only the DPO-vs-SFT comparison is lost. Decided now, on 9 Sep, so that it reads as a plan rather than a week-3 concession. |
 | M0 AUROC < 0.60 | **Stop the training arms.** Consensus among near-chance monitors is noise. Move to a larger trusted model, or ship the M0/M1/M2 replication alone. |
 | Smoke test fails by 17 Sep | Debug before generating full transcripts — this is cheap to catch here and expensive to catch in week 3. |
 | M4's two-term loss not converging by 17 Sep | Set λ = 0, ship plain text SFT, name the rounding as a limitation (ADR-0005). H4 weakens; the project survives. |
 | Agreement > 85% and quintiles don't fix it | Report it: *"monitoring transcripts don't admit useful consensus supervision"* is a real finding about MACA's scope. |
 | M2 doesn't beat M1 on Qwen | The anchor's diversity result doesn't replicate on an open 7B — report descriptively; the distillation arms lose their motivation but still answer H2. |
-| Neither M3 nor M4 clears H2's 50% threshold | **This is the answer, not a failure.** Distillation doesn't preserve ensemble diversity in this setting — write that up. |
+| Neither M5 nor M4 clears H2's 50% threshold | **This is the answer, not a failure.** Distillation doesn't preserve ensemble diversity in this setting — write that up. |
 | A trained arm loses > 0.05 pAUC | H4 promoted per §6 — the headline, not a setback. |
 
 ---
@@ -603,25 +618,25 @@ that readers know which questions were *deferred* rather than *answered*.
 
 ### The two remaining MACA stages
 
-M3 uses MACA's data pipeline — multi-agent debate, consensus extraction — with
+M5 uses MACA's data pipeline — multi-agent debate, consensus extraction — with
 DPO substituted for MACA's own training objectives (ADR-0003). Both of the
 substituted stages are natural follow-ups, and together they would turn "we
 adapted MACA" into "we tested MACA."
 
 **MV-SFT — MACA's first stage.** Fine-tune on the majority-consistent
 trajectories alone, discarding dissent. Cheaper than DPO and strictly more
-faithful to the paper. Run alongside M3 and M4 it makes a clean three-way
+faithful to the paper. Run alongside M5 and M4 it makes a clean three-way
 decomposition that this project cannot currently separate:
 
 | Arm | Data | Target | Isolates |
 |---|---|---|---|
 | M4 | all train items | ensemble mean score | distilling the ensemble's *output* |
 | MV-SFT | consensus items only | the winning trajectory | distilling the ensemble's *agreement* |
-| M3 (DPO) | consensus + dissent pairs | preference between them | distilling the ensemble's *disagreement* |
+| M5 (DPO) | consensus + dissent pairs | preference between them | distilling the ensemble's *disagreement* |
 
 The open question it answers: does the value of debate come from **filtering** to
 what the monitors agreed on, or from the **contrast** with what they abandoned?
-This project's H3 conflates the two — M3 beating M4 could be either.
+This project's H3 conflates the two — M5 beating M4 could be either.
 
 **MV-GRPO — MACA's second stage.** Reinforcement learning with consensus-derived
 rewards, on top of MV-SFT. This is the only configuration that constitutes an

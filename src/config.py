@@ -90,7 +90,7 @@ class SplitConfig:
         test_problems: Deterministic only.
         seed: Fixed. The split is a preregistered artifact.
         nondeterministic_go_to_train: Neither training arm reads a ground-truth
-            label — M4 regresses onto teacher scores, M3's pairs come from
+            label — M4 regresses onto teacher scores, M5's pairs come from
             monitor consensus — so label noise cannot reach the training
             signal. It is toxic only in val (threshold calibration) and test
             (all metrics). Nondeterministic problems are therefore free in
@@ -128,9 +128,9 @@ class SamplingConfig:
             ensembling *plus* a temperature change and could not separate them.
             Making M0 the first of M1's three draws isolates ensembling and
             saves the duplicate generations.
-        n_single: Samples for a 1x arm (M0, M2 per persona, M3, M4).
+        n_single: Samples for a 1x arm (M0, M2 per persona, M3, M4, M5).
         n_ensemble: Samples for the identical-ensemble arm (M1), and the
-            equal-compute operating point for M3/M4.
+            equal-compute operating point for M3, M4 and M5.
         max_tokens: Enough for a short chain of thought plus the verdict and
             score. Raise only before prompts are frozen.
     """
@@ -299,7 +299,7 @@ class SFTConfig:
 
 @dataclass(frozen=True)
 class DPOConfig:
-    """M3-specific settings: DPO on debate-consensus preference pairs.
+    """M5-specific settings: DPO on debate-consensus preference pairs.
 
     This is **not** MACA. Published MACA is MV-SFT plus MV-GRPO; this is
     offline DPO on pairs derived from a two-round debate. See ADR-0003, and
@@ -336,7 +336,7 @@ class Arm:
     """One of the five configurations under comparison.
 
     Attributes:
-        name: Short id used in filenames and the scores table (``m0``..``m4``).
+        name: Short id used in filenames and the scores table (``m0``..``m5``).
         description: One line, for figures and logs.
         n_samples: Monitor calls per item at the headline operating point.
         prompts: Which prompt files this arm serves under. M2 uses the three
@@ -359,8 +359,9 @@ ARMS: tuple[Arm, ...] = (
     Arm("m0", "Single baseline monitor", 1, (BASELINE_PROMPT,), False, 1),
     Arm("m1", "3x identical, mean-aggregated", 3, (BASELINE_PROMPT,), False, 3),
     Arm("m2", "3 persona prompts, mean-aggregated", 1, PERSONA_PROMPTS, False, 3),
-    Arm("m3", "DPO on consensus pairs", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m3", "Fine-tuned on true labels", 1, (BASELINE_PROMPT,), True, 1),
     Arm("m4", "Two-term SFT from teacher scores", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m5", "DPO on consensus pairs", 1, (BASELINE_PROMPT,), True, 1),
 )
 
 #: Default instances. Stages take these as arguments rather than reaching for

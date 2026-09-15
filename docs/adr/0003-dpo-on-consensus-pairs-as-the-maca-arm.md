@@ -7,7 +7,7 @@ date: 2026-09-09
 
 MACA as published (arXiv:2509.15172) is **MV-SFT plus MV-GRPO** — supervised
 fine-tuning on majority-vote-consistent trajectories, followed by reinforcement
-learning with a consensus reward. This project implements neither. M3 instead
+learning with a consensus reward. This project implements neither. M5 instead
 runs a two-round debate between the three personas, bins the round-2 scores,
 takes the majority as consensus, splits traces into agree-with-majority
 (chosen) and dissent (rejected), and trains **QLoRA DPO (β = 0.1)** on those
@@ -32,11 +32,11 @@ infrastructure that would not fit in a 24-day sprint on one GPU.
   *"DPO on MACA-style consensus-derived preference pairs"*, never "MACA". A
   reader who checks the MACA paper will find no DPO in it, and an unqualified
   claim invites the reviewer's first and most damaging objection.
-- H3 ("M3 beats M4") therefore tests *this adaptation*, not MACA itself. A null
+- H3 ("M5 beats M4") therefore tests *this adaptation*, not MACA itself. A null
   result is evidence about DPO-on-consensus, and is **not** evidence that MACA
   fails on monitoring.
 - Binary consensus binning carries **no information about score magnitude**, so
-  M3 can improve the ranking metric only through better reasoning, never through
+  M5 can improve the ranking metric only through better reasoning, never through
   better calibration. This is a direct mechanism for the sharpening cost that H4
   predicts.
 - Preference pairs are generated under persona prompts but trained under the

@@ -10,7 +10,7 @@ over a fixed, pre-labelled item set**: every label exists in the dataset before
 any monitor runs, no attack policy acts during evaluation, and no
 audit/defer/resample decision is ever executed against a live task. The primary
 metric is **pAUC at FPR ∈ [0, 10%]**, normalised. This matches how the anchor
-ensemble paper evaluates, keeps all five arms comparable on identical items
+ensemble paper evaluates, keeps every arm comparable on identical items
 (so every contrast is paired), and removes a deferral-threshold confound that
 would consume time without changing the answer to the research question.
 

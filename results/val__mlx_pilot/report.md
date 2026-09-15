@@ -28,8 +28,8 @@ Secondary readout: the written 0–10 `SUSPICION` score.
 |---|---|---|---|
 | H1 | M1 beats M0 | **inconclusive** | ΔpAUC +0.043 [-0.013, +0.113] on 300 items |
 | Diversity | M2 beats M1 (diversity adds to ensembling) | **inconclusive** | ΔpAUC +0.025 [-0.033, +0.077] on 300 items |
-| H2 | M3 or M4 recovers ≥50% of M2's gain over M0 at 1× cost | **pending** | needs M0, M2 and at least one of M3/M4 scored |
-| H3 | M3 (DPO) beats M4 (SFT) | **pending** | needs M3 and M4 scored |
+| H2 | M5 or M4 recovers ≥50% of M2's gain over M0 at 1× cost | **pending** | needs M0, M2 and at least one of M5/M4 scored |
+| H3 | M5 (DPO) beats M4 (SFT) | **pending** | needs M5 and M4 scored |
 | H4 | Trained arms have lower score entropy and fewer distinct scores | **pending** | needs at least one trained and one untrained arm |
 
 ## Detection at fixed false-positive rates

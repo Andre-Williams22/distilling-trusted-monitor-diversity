@@ -5,7 +5,7 @@ results** — a diversity gain that can be tuned into existence is not a finding
 
 | File | Used by |
 |---|---|
-| `baseline.txt` | M0, M1, and both trained arms (M3, M4) at train and serve time |
+| `baseline.txt` | M0, M1, and both trained arms (M5, M4) at train and serve time |
 | `persona_control_flow.txt` | M2 |
 | `persona_reference_solution.txt` | M2 |
 | `persona_attacker.txt` | M2 |

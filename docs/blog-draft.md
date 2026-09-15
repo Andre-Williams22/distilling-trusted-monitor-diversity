@@ -129,7 +129,10 @@ different prompts.
 ## Next
 
 - **Repeat runs** with fixed seeds, to put error bars on M4 versus M2.
-- **M3:** distil the ensemble's *reasoning* rather than its scores — having the
+- **M3, a supervised baseline:** the same model fine-tuned on the true
+  backdoored/clean labels. If M4 matches it, learning from an ensemble is worth
+  as much as learning from the answers, without needing any answers.
+- **M5:** distil the ensemble's *reasoning* rather than its scores — having the
   three prompts debate, and training with DPO to prefer reasoning that survived
   the debate (a MACA-style approach). This tests whether distilling
   deliberation beats distilling scores.

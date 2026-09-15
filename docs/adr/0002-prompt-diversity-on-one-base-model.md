@@ -30,7 +30,7 @@ by the student simply being a better model.
 
 - **This is the project's largest scientific risk.** The anchor's +13% is not
   evidence that *prompt* diversity buys the same gain. If M2 fails to beat M1
-  meaningfully, the ceiling that M3 and M4 are trying to reach mostly
+  meaningfully, the ceiling that M5 and M4 are trying to reach mostly
   disappears, and the distillation question loses its motivation even though it
   remains answerable.
 - The persona prompts are frozen before any generation run and are never edited
@@ -49,4 +49,4 @@ by the student simply being a better model.
   ceiling is soft, and here is the measurement"* — rather than having a reviewer
   raise it against no data.
 - It is deliberately **not** scheduled in week 1: adding model-swapping plumbing
-  before the spine gate would compete with the very deadline that protects M3.
+  before the spine gate would compete with the very deadline that protects M5.

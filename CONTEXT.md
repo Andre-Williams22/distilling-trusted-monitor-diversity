@@ -66,7 +66,7 @@ one score. Costs 3× inference on every action, forever.
 _Avoid_: committee, panel, pool
 
 **Arm**:
-One of the five configurations under comparison (M0–M4), each producing a score
+One of the six configurations under comparison (M0–M5), each producing a score
 for every item in a split.
 _Avoid_: condition, variant, model, run
 

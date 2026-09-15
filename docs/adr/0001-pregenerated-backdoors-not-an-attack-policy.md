@@ -40,7 +40,7 @@ we actually care about, which is about *monitors*, not about attackers.
   not a stable fact, so a fraction of their positive labels are noise — noise
   that lands in precisely the low-FPR region pAUC@[0,10%] integrates over. But
   *neither training arm reads a ground-truth label*: M4 regresses onto the
-  teacher's mean score and M3's pairs come from monitor consensus, so the label
+  teacher's mean score and M5's pairs come from monitor consensus, so the label
   enters only in val (threshold calibration) and test (all metrics). All 138
   qualifying nondeterministic problems are therefore assigned to **train**,
   where they are free, and val/test are drawn purely from the 1,444

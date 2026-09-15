@@ -4,9 +4,11 @@ Can inference-time monitor diversity be distilled into a single trusted monitor
 — recovering most of a 3-monitor ensemble's backdoor-detection gain at 1x
 inference cost, using no labels and no stronger teacher?
 
-Two distillation methods compared side by side: DPO on MACA-style
-consensus-derived preference pairs, and supervised distillation from the
-ensemble's mean scores. Evaluated as static classification on the
+Two distillation methods compared side by side: supervised distillation from the
+ensemble's mean scores (M4), and DPO on MACA-style consensus-derived preference
+pairs (M5). A baseline fine-tuned on the true labels (M3) shows whether learning
+from the ensemble beats learning from the answers. Evaluated as static
+classification on the
 [ControlArena APPS backdoor dataset](https://huggingface.co/datasets/RoganInglis/apps-control-arena).
 
 See `project-plan.md` for the full design, `CONTEXT.md` for vocabulary, and
@@ -149,10 +151,11 @@ python main.py score --arm m0 --split val
 python main.py score --arm m1 --split test
 python main.py score --arm m2 --split test
 python main.py diversity-check --split val
+# M3: fine-tuned on true labels (ADR-0007) — training stage not built yet
 python main.py teacher-scores --split train      # M4 targets
-python main.py debate --split train              # M3 transcripts
+python main.py debate --split train              # M5 transcripts
 python main.py build-pairs
 python main.py train-sft                         # M4
-python main.py train-dpo                         # M3
+python main.py train-dpo                         # M5
 python main.py analyse --split test
 ```

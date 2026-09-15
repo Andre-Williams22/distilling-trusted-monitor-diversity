@@ -1,6 +1,6 @@
 """Paired significance tests and confidence intervals.
 
-**Every comparison in this project is paired.** All five arms score the same
+**Every comparison in this project is paired.** All arms score the same
 items, so arm-to-arm differences are correlated and the unpaired tests are both
 wrong and needlessly conservative here.
 
@@ -368,7 +368,7 @@ def recovered_fraction(
     Args:
         baseline: M0's metric value.
         ceiling: M2's metric value.
-        distilled: M3's or M4's metric value.
+        distilled: M4's or M5's metric value.
         min_gain: Smallest ceiling-over-baseline gain worth dividing by.
 
     Returns:

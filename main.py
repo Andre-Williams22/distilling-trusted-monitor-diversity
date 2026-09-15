@@ -34,7 +34,7 @@ import sys
 import time
 from collections.abc import Sequence
 
-ARM_CHOICES = ("m0", "m1", "m2", "m3", "m4")
+ARM_CHOICES = ("m0", "m1", "m2", "m3", "m4", "m5")
 SPLIT_CHOICES = ("train", "val", "test")
 
 
@@ -132,7 +132,7 @@ def cmd_train_sft(args: argparse.Namespace) -> int:
 
 
 def cmd_train_dpo(args: argparse.Namespace) -> int:
-    """Train M3 on debate-consensus preference pairs (ADR-0003)."""
+    """Train M5 on debate-consensus preference pairs (ADR-0003)."""
     from src.train_dpo import train
 
     run = train(smoke=args.smoke)
@@ -202,7 +202,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Served name of a LoRA adapter (the NAME in vLLM's --lora-modules "
-            "NAME=PATH). Required for m3 and m4, ignored otherwise."
+            "NAME=PATH). Required for m3, m4 and m5, ignored otherwise."
         ),
     )
     sub.add_argument(
@@ -268,7 +268,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    sub = add("train-dpo", cmd_train_dpo, "Train M3.")
+    sub = add("train-dpo", cmd_train_dpo, "Train M5.")
     sub.add_argument("--smoke", action="store_true", help="Run on ~50 items.")
 
     sub = add(

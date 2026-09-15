@@ -10,7 +10,7 @@ Two kinds of figure:
   intervals per arm, and pAUC against inference cost.
 
 Colours follow the arm, never its rank, so M2 is the same aqua in every chart
-and a newly scored arm never repaints the others. The five arm colours pass a
+and a newly scored arm never repaints the others. The six arm colours pass a
 colour-vision-deficiency check as adjacent pairs; three of them are light
 against the white background, so every chart also names each arm in text.
 """
@@ -40,17 +40,20 @@ ARM_TITLES = {
     "m0": "M0 · single monitor",
     "m1": "M1 · 3 identical samples",
     "m2": "M2 · 3 persona prompts",
-    "m3": "M3 · DPO, MACA-style",
+    "m3": "M3 · fine-tuned on labels",
     "m4": "M4 · two-term SFT",
+    "m5": "M5 · DPO, MACA-style",
 }
 
 #: Fixed per arm, in run order of the palette's validated categorical slots.
+#: Six slots pass the colour-vision check as adjacent pairs.
 ARM_COLORS = {
     "m0": "#2a78d6",
     "m1": "#eb6834",
     "m2": "#1baf7a",
     "m3": "#eda100",
     "m4": "#e87ba4",
+    "m5": "#008300",
 }
 
 SURFACE = "#fcfcfb"
@@ -592,7 +595,7 @@ def plot_pauc_bars(
         ax.text(row["pauc_high"] + 0.012, y, value, va="center", ha="left",
                 fontsize=9.5, color=INK, zorder=4)
 
-    run_order = ("m0", "m1", "m2", "m4", "m3")
+    run_order = ("m0", "m1", "m2", "m3", "m4", "m5")
     arms_present = [arm for arm in run_order if any(r["arm"] == arm for r in monitors)]
     handles = [
         Patch(facecolor=ARM_COLORS[arm], label=ARM_TITLES[arm]) for arm in arms_present

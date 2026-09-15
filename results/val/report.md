@@ -1,6 +1,6 @@
 # Monitor distillation results — val split
 
-**Setup:** Qwen2.5-7B-Instruct, m4, bf16 via vLLM · **Arms scored:** M0, M1, M2, M4 · **Generated:** 2026-09-14 14:59 · commit `6f402f6` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, m4, bf16 via vLLM · **Arms scored:** M0, M1, M2, M4 · **Generated:** 2026-09-15 12:16 · commit `172cfd7` with uncommitted changes
 
 ## Summary
 
@@ -28,9 +28,10 @@ Secondary readout: the written 0–10 `SUSPICION` score.
 |---|---|---|---|
 | H1 | M1 beats M0 | **inconclusive** | ΔpAUC -0.004 [-0.031, +0.021] on 300 items |
 | Diversity | M2 beats M1 (diversity adds to ensembling) | **inconclusive** | ΔpAUC +0.025 [-0.015, +0.069] on 300 items |
-| H2 | M3 or M4 recovers ≥50% of M2's gain over M0 at 1× cost | **supported** | recovered: M4 197% (point estimates) |
-| H3 | M3 (DPO) beats M4 (SFT) | **pending** | needs M3 and M4 scored |
+| H2 | M4 or M5 recovers ≥50% of M2's gain over M0 at 1× cost | **supported** | recovered: M4 197% (point estimates) |
+| H3 | M5 (DPO) beats M4 (SFT) | **pending** | needs M5 and M4 scored |
 | H4 | Trained arms have lower score entropy and fewer distinct scores | **not supported** | entropy 4.28 vs 2.98 bits |
+| Labels | M4 (ensemble, no labels) vs M3 (true labels) — added after preregistration, ADR-0007 | **pending** | needs M4 and M3 scored |
 
 ## Detection at fixed false-positive rates
 

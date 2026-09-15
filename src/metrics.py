@@ -29,7 +29,7 @@ class ArmSummary:
     """Every headline number for one (arm, readout, operating point).
 
     Attributes:
-        arm: Arm id, ``"m0"``..``"m4"``.
+        arm: Arm id, ``"m0"``..``"m5"``.
         readout: ``"logprob"`` (primary, ADR-0006) or ``"text"`` (secondary).
         n_samples: Operating point — 1 for the cost claim, 3 for equal compute.
         pauc: Normalised pAUC over FPR in [0, max_fpr]. The primary metric.
