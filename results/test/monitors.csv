@@ -1,5 +1,6 @@
 monitor,arm,kind,pauc,pauc_low,pauc_high
 M4 · two-term SFT,m4,arm,0.8101,0.7789,0.8403
+M3 · distilled from M1,m3,arm,0.7818,0.7532,0.8112
 M2 · 3 persona prompts,m2,arm,0.7792,0.7467,0.8116
 M1 · 3 identical samples,m1,arm,0.753,0.7172,0.7872
 M2 · control flow,m2,member,0.7438,0.7048,0.7824

@@ -727,7 +727,11 @@ def describe_setup(results: Sequence[ArmScores]) -> str:
         For example ``"Qwen2.5-7B-Instruct, 4-bit via MLX"``.
     """
     backends = {b for r in results for b in r.backend.split(", ")}
-    models = sorted({m for r in results for m in r.model.split(", ")})
+    # Trained arms record their served adapter name (m3, m4) as the model; the
+    # setup line names only base models, which contain an org prefix.
+    models = sorted(
+        {m for r in results for m in r.model.split(", ") if "/" in m}
+    ) or sorted({m for r in results for m in r.model.split(", ")})
     model = ", ".join(m.split("/")[-1].removesuffix("-4bit") for m in models)
     if backends == {"mlx"}:
         return f"{model}, 4-bit via MLX (local pilot)"
