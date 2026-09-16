@@ -1,6 +1,6 @@
 # Monitor distillation results — val split
 
-**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4 · **Generated:** 2026-09-15 15:01 · commit `08281ed` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5 · **Generated:** 2026-09-15 17:59 · commit `b086209` with uncommitted changes
 
 ## Summary
 
@@ -13,6 +13,7 @@ Primary readout: `P(yes) ÷ (P(yes) + P(no))` at the verdict token. 95% interval
 | M2 · 3 persona prompts | 3× | 300 | 0.859 [0.82, 0.90] | 0.929 [0.90, 0.96] | 0.71 | 88% / 17% |
 | M3 · distilled from M1 | 1× | 300 | 0.858 [0.82, 0.90] | 0.926 [0.89, 0.95] | 0.69 | 93% / 35% |
 | M4 · two-term SFT | 1× | 300 | 0.879 [0.84, 0.92] | 0.931 [0.90, 0.96] | 0.70 | 92% / 31% |
+| M5 · MACA (MV-DPO) | 1× | 300 | 0.852 [0.80, 0.90] | 0.922 [0.89, 0.95] | 0.63 | 89% / 18% |
 
 Secondary readout: the written 0–10 `SUSPICION` score.
 
@@ -23,6 +24,7 @@ Secondary readout: the written 0–10 `SUSPICION` score.
 | M2 · 3 persona prompts | 0.803 [0.71, 0.88] | 0.919 [0.88, 0.95] | 0.31 | 23 |
 | M3 · distilled from M1 | 0.612 [0.56, 0.68] | 0.811 [0.76, 0.86] | 0.46 | 9 |
 | M4 · two-term SFT | 0.626 [0.56, 0.70] | 0.838 [0.79, 0.88] | 0.37 | 9 |
+| M5 · MACA (MV-DPO) | 0.588 [0.53, 0.67] | 0.845 [0.80, 0.89] | 0.03 | 6 |
 
 ## Hypotheses
 
@@ -30,9 +32,9 @@ Secondary readout: the written 0–10 `SUSPICION` score.
 |---|---|---|---|
 | H1 | M1 beats M0 | **inconclusive** | ΔpAUC -0.004 [-0.031, +0.021] on 300 items |
 | Diversity | M2 beats M1 (diversity adds to ensembling) | **inconclusive** | ΔpAUC +0.025 [-0.015, +0.069] on 300 items |
-| H2 | M4 or M5 recovers ≥50% of M2's gain over M0 at 1× cost | **supported** | recovered: M4 197% (point estimates) |
-| H3 | M5 (DPO) beats M4 (SFT) | **pending** | needs M5 and M4 scored |
-| H4 | Trained arms have lower score entropy and fewer distinct scores | **not supported** | entropy 4.28 vs 2.98 bits |
+| H2 | M4 or M5 recovers ≥50% of M2's gain over M0 at 1× cost | **supported** | recovered: M4 197%, M5 63% (point estimates) |
+| H3 | M5 (MACA, MV-DPO) beats M4 (score distillation) | **inconclusive** | ΔpAUC -0.027 [-0.081, +0.023] on 300 items |
+| H4 | Trained arms have lower score entropy and fewer distinct scores | **not supported** | entropy 3.36 vs 2.98 bits |
 | Diversity distilled | M4 (diverse teacher) beats M3 (identical teacher) — follow-up, ADR-0008 | **inconclusive** | ΔpAUC +0.021 [-0.016, +0.056] on 300 items |
 
 ## Detection at fixed false-positive rates
@@ -44,8 +46,9 @@ Share of backdoors caught when the threshold flags a given share of clean code. 
 | 1 | M4 · two-term SFT | 1× | 1,000 | 0.879 | 70% (1.3%) | 73% (2.0%) | 79% (5.3%) | 84% (10.0%) |
 | 2 | M2 · 3 persona prompts | 3× | 3,000 | 0.859 | 71% (1.3%) | 75% (2.0%) | 75% (5.3%) | 81% (10.0%) |
 | 3 | M3 · distilled from M1 | 1× | 1,000 | 0.858 | 69% (1.3%) | 69% (2.0%) | 75% (5.3%) | 81% (10.0%) |
-| 4 | M0 · single monitor | 1× | 1,000 | 0.839 | 63% (1.3%) | 70% (2.0%) | 73% (5.3%) | 75% (10.0%) |
-| 5 | M1 · 3 identical samples | 3× | 3,000 | 0.835 | 67% (1.3%) | 69% (2.0%) | 72% (5.3%) | 73% (10.0%) |
+| 4 | M5 · MACA (MV-DPO) | 1× | 1,000 | 0.852 | 63% (1.3%) | 65% (2.0%) | 77% (5.3%) | 83% (10.0%) |
+| 5 | M0 · single monitor | 1× | 1,000 | 0.839 | 63% (1.3%) | 70% (2.0%) | 73% (5.3%) | 75% (10.0%) |
+| 6 | M1 · 3 identical samples | 3× | 3,000 | 0.835 | 67% (1.3%) | 69% (2.0%) | 72% (5.3%) | 73% (10.0%) |
 
 ## Ensembles vs. their parts
 
@@ -72,6 +75,9 @@ Both arms scored on the same items. ΔpAUC from a paired bootstrap; ΔAUROC and 
 | M4 − M1 | 300 | +0.044 [+0.003, +0.091] | +0.027 [+0.003, +0.052] | 0.0288 |
 | M4 − M2 | 300 | +0.020 [-0.017, +0.055] | +0.002 [-0.021, +0.024] | 0.883 |
 | M4 − M3 | 300 | +0.021 [-0.016, +0.056] | +0.005 [-0.016, +0.025] | 0.662 |
+| M5 − M0 | 300 | +0.013 [-0.034, +0.060] | +0.040 [+0.005, +0.075] | 0.0257 |
+| M5 − M2 | 300 | -0.007 [-0.064, +0.047] | -0.007 [-0.033, +0.019] | 0.604 |
+| M5 − M4 | 300 | -0.027 [-0.081, +0.023] | -0.009 [-0.033, +0.015] | 0.486 |
 
 ## Across arms and monitors
 
@@ -163,6 +169,20 @@ pAUC@10% FPR **0.879 [0.84, 0.92]**, AUROC 0.931 [0.90, 0.96]. At P(yes) ≥ 0.5
 ![M4 · two-term SFT: share of backdoored items (above the line) and clean items (below) at each score.](figures/m4_scores.png)
 
 *M4 · two-term SFT: share of backdoored items (above the line) and clean items (below) at each score.*
+
+### M5 · MACA (MV-DPO)
+
+MACA's MV-DPO: the three personas debate for two rounds, and the model is trained to prefer reasoning that agreed with their majority verdict over reasoning that dissented. Does distilling deliberation beat distilling scores?
+
+pAUC@10% FPR **0.852 [0.80, 0.90]**, AUROC 0.922 [0.89, 0.95]. At P(yes) ≥ 0.5 it flags 89% of backdoored and 18% of clean solutions.
+
+![M5 · MACA (MV-DPO): ROC curve for false-positive rates up to 10%.](figures/m5_roc.png)
+
+*M5 · MACA (MV-DPO): ROC curve for false-positive rates up to 10%.*
+
+![M5 · MACA (MV-DPO): share of backdoored items (above the line) and clean items (below) at each score.](figures/m5_scores.png)
+
+*M5 · MACA (MV-DPO): share of backdoored items (above the line) and clean items (below) at each score.*
 
 ## How these numbers were made
 

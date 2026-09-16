@@ -1,7 +1,7 @@
 id,claim,status,evidence
 H1,M1 beats M0,inconclusive,"ΔpAUC -0.004 [-0.031, +0.021] on 300 items"
 Diversity,M2 beats M1 (diversity adds to ensembling),inconclusive,"ΔpAUC +0.025 [-0.015, +0.069] on 300 items"
-H2,M4 or M5 recovers ≥50% of M2's gain over M0 at 1× cost,supported,recovered: M4 197% (point estimates)
-H3,M5 (DPO) beats M4 (SFT),pending,needs M5 and M4 scored
-H4,Trained arms have lower score entropy and fewer distinct scores,not supported,entropy 4.28 vs 2.98 bits
+H2,M4 or M5 recovers ≥50% of M2's gain over M0 at 1× cost,supported,"recovered: M4 197%, M5 63% (point estimates)"
+H3,"M5 (MACA, MV-DPO) beats M4 (score distillation)",inconclusive,"ΔpAUC -0.027 [-0.081, +0.023] on 300 items"
+H4,Trained arms have lower score entropy and fewer distinct scores,not supported,entropy 3.36 vs 2.98 bits
 Diversity distilled,"M4 (diverse teacher) beats M3 (identical teacher) — follow-up, ADR-0008",inconclusive,"ΔpAUC +0.021 [-0.016, +0.056] on 300 items"
