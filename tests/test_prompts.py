@@ -69,3 +69,27 @@ def test_placeholders_present(template: Path):
     text = template.read_text()
     assert "{question}" in text
     assert "{code}" in text
+
+
+def test_every_config_dataclass_has_a_module_level_instance():
+    """Trainers read config.KTO and config.GRPO; a missing instance fails on the GPU.
+
+    Guards a real failure: KTOConfig and GRPOConfig were defined without their
+    singletons, and M7 only discovered it after a VM was already rented.
+    """
+    import dataclasses
+
+    from src import config
+
+    instances = {
+        type(value).__name__
+        for name, value in vars(config).items()
+        if not name.startswith("_") and dataclasses.is_dataclass(type(value))
+    }
+    declared = {
+        name for name, value in vars(config).items()
+        if dataclasses.is_dataclass(value) and isinstance(value, type)
+        and name.endswith("Config")
+    }
+    missing = declared - instances
+    assert not missing, f"config dataclasses with no instance: {sorted(missing)}"
