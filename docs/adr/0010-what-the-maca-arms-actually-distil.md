@@ -66,6 +66,37 @@ Short low-learning-rate runs on a seeded subsample test which it was:
 - If scores spread out and pAUC rises materially, the first run was an
   **optimisation failure**, and M7's reported number was mine, not MV-KTO's.
 
+### Diagnostic result: not an implementation fault
+
+Val split, 300 items:
+
+| Config | pAUC | AUROC | distinct | frac > 0.99 | mean on clean |
+|---|---|---|---|---|---|
+| Original (lr 1e-4, w 4.12, 4,713 ex, 2 ep) | 0.519 | 0.707 | 18 | 0.797 | 0.630 |
+| A: low lr **2e-5** (w 4.46, 1,500 ex, 1 ep) | 0.529 | 0.752 | 54 | 0.823 | 0.691 |
+| B: **no reweighting** (lr 1e-4, 1,500 ex, 1 ep) | 0.515 | 0.676 | 22 | 0.813 | 0.664 |
+
+A five-fold lower learning rate moves pAUC by +0.010 and leaves the scores just
+as saturated; removing the class reweighting is slightly worse. Every
+configuration sits at the binary vote's **0.520** ceiling. **MV-KTO reproduced
+its target faithfully; the collapse is the objective doing its job on an
+uninformative signal, not a defect in this implementation.**
+
+Consequently **M7's reported test pAUC of 0.516 stands unchanged.** No
+configuration earned a test re-score, so the post-hoc selection disclosed above
+never actually fired -- nothing about M7 in the results is tuned.
+
+### A second implementation fault, found and fixed
+
+The first diagnostic attempt was void: `learning_rate` was computed into the run
+metadata but the **default** was passed to the training loop, and `--tag` never
+reached the run directory, so the second config overwrote the first. Config A
+had therefore run at 1e-4 while its metadata would have claimed 2e-5 -- a run
+recording a hyperparameter it never used. Fixed in `f328435`, with a test
+asserting overrides reach both the loop and the run name. The numbers above come
+from the corrected re-run, whose metadata was checked against the per-step
+learning rates in `history.jsonl`.
+
 **Disclosed deviation:** the diagnostic's configuration is chosen on **val**,
 and only the chosen one is scored on test. That is post-hoc selection after
 seeing M7 fail, so M7's updated number is *not* preregistered and must be
