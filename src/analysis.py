@@ -54,12 +54,14 @@ PRIMARY_READOUT = "logprob"
 #: Run order, which is also the order arms appear in every table and chart.
 #: M3 is the M1-distilled arm (ADR-0008). The earlier label-supervised M3 is
 #: excluded: a deployed trusted monitor has no attack labels (ADR-0007).
-ARM_ORDER = ("m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8")
+ARM_ORDER = (
+    "m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9",
+)
 
 #: The preregistered primary analysis. M6-M8 are a secondary, exploratory
 #: family whose comparisons are Holm-corrected within the family (ADR-0009).
 PRIMARY_ARMS = ("m0", "m1", "m2", "m3", "m4", "m5")
-EXPLORATORY_ARMS = ("m6", "m7", "m8")
+EXPLORATORY_ARMS = ("m6", "m7", "m8", "m9")
 
 #: Score at or above which an item counts as "flagged", per readout. Used only
 #: for the plain-language flag rates in the report, never for a metric.
@@ -88,6 +90,9 @@ COMPARISON_PAIRS = (
     ("m7", "m5"),
     ("m8", "m4"),
     ("m8", "m5"),
+    ("m9", "m4"),
+    ("m9", "m5"),
+    ("m9", "m6"),
 )
 
 #: Comparisons belonging to the exploratory family (ADR-0009). Holm correction
@@ -121,6 +126,9 @@ ARM_PURPOSE = {
     "own, with no pairing, so unanimous items train too (exploratory, ADR-0009).",
     "m8": "MACA's MV-GRPO: the model samples its own answers and is rewarded when "
     "the verdict matches the debate majority (exploratory, ADR-0009).",
+    "m9": "The debate without the vote: distils the personas' *graded* mean score "
+    "after two debate rounds. Against M4 it isolates what deliberation costs; "
+    "against M5-M7 it isolates what voting costs (ADR-0010).",
 }
 
 

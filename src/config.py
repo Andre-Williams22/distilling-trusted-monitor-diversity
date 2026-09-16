@@ -415,6 +415,7 @@ ARMS: tuple[Arm, ...] = (
     Arm("m6", "MACA MV-SFT on majority responses", 1, (BASELINE_PROMPT,), True, 1),
     Arm("m7", "MACA MV-KTO on labelled responses", 1, (BASELINE_PROMPT,), True, 1),
     Arm("m8", "MACA MV-GRPO on majority reward", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m9", "Consensus-selected graded KD", 1, (BASELINE_PROMPT,), True, 1),
 )
 
 #: Default instances. Stages take these as arguments rather than reaching for

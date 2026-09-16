@@ -36,7 +36,9 @@ import sys
 import time
 from collections.abc import Sequence
 
-ARM_CHOICES = ("m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8")
+ARM_CHOICES = (
+    "m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9",
+)
 SPLIT_CHOICES = ("train", "val", "test")
 
 
@@ -149,7 +151,11 @@ def cmd_train_kto(args: argparse.Namespace) -> int:
     """Train M7 with MACA's MV-KTO on labelled debate answers (ADR-0009)."""
     from src.train_kto import train
 
-    run = train(smoke=args.smoke, text_source=args.text_source)
+    run = train(
+        smoke=args.smoke, text_source=args.text_source,
+        learning_rate=args.learning_rate, undesirable_weight=args.undesirable_weight,
+        max_examples=args.max_examples, epochs=args.epochs, tag=args.tag,
+    )
     print(f"run -> {run}")
     return 0
 
@@ -277,7 +283,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument(
         "--targets",
         default="ensemble",
-        choices=("ensemble", "m1-ensemble", "labels", "consensus"),
+        choices=(
+            "ensemble", "m1-ensemble", "labels", "consensus", "consensus-kd",
+        ),
         help=(
             "ensemble: M4, distilled from M2's diverse ensemble. m1-ensemble: M3, "
             "distilled from M1's identical ensemble (ADR-0008). labels: the "
@@ -335,6 +343,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Which debate text the majority vote selects (ADR-0009). "
              "round1 is context-free; round2 mentions peers a solo monitor lacks.",
     )
+    sub.add_argument("--learning-rate", type=float, default=None,
+                     help="Override the shared learning rate (ADR-0010 diagnostic).")
+    sub.add_argument("--undesirable-weight", type=float, default=None,
+                     help="Override the weight computed from the class counts.")
+    sub.add_argument("--max-examples", type=int, default=None,
+                     help="Train on a seeded subsample, for short diagnostics.")
+    sub.add_argument("--epochs", type=float, default=None,
+                     help="Override the number of epochs.")
+    sub.add_argument("--tag", default="",
+                     help="Suffix for the run directory, so a diagnostic does "
+                          "not overwrite the reported run.")
 
     sub = add(
         "analyse", cmd_analyse, "Compute metrics, draw figures, write the report."

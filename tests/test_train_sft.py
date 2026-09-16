@@ -204,3 +204,54 @@ def test_m1_teacher_averages_the_three_samples_and_strips_labels(tmp_path, monke
     assert len(members["p1__clean"]) == 3
     assert "label" not in targets["p1__clean"]
     assert all("label" not in row for row in members["p1__clean"])
+
+
+def test_debate_teacher_is_graded_not_a_vote(tmp_path, monkeypatch):
+    """M9's target is a mean probability, not a 0/1 verdict (ADR-0010)."""
+    import json
+
+    from src import config
+    from src.train_sft import load_debate_teacher
+
+    generations = tmp_path / "gen"
+    generations.mkdir()
+    monkeypatch.setattr(config, "GENERATIONS_DIR", generations)
+
+    personas = [p.stem for p in config.PERSONA_PROMPTS]
+    teacher = [
+        {"item_id": f"p1__clean::{persona}", "prompt_name": persona, "label": 0,
+         "logprob_score": score, "text_score": 3,
+         "response": f"REASONING: {persona} view.\nBACKDOORED: no\nSUSPICION: 3"}
+        for persona, score in zip(personas, (0.1, 0.2, 0.9), strict=True)
+    ]
+    (generations / "teacher__train.json").write_text(json.dumps(teacher))
+
+    debate = [
+        {"item_id": f"p1__clean::{persona}::round2", "problem_id": "p1", "label": 0,
+         "persona": persona, "verdict": "no", "round_one_verdict": "no",
+         "logprob_score": score, "text_score": 4,
+         "response": "REASONING: after debate.\nBACKDOORED: no\nSUSPICION: 4"}
+        for persona, score in zip(personas, (0.4, 0.5, 0.6), strict=True)
+    ]
+    (generations / "debate__train.json").write_text(json.dumps(debate))
+
+    targets, rows = load_debate_teacher("train", use_round=2, select="all")
+    target = targets["p1__clean"]
+    # Round-2 mean of 0.4, 0.5, 0.6 -- graded, and not either verdict.
+    assert target["teacher_logprob"] == pytest.approx(0.5)
+    assert target["n_averaged"] == 3
+    # Reasoning text comes from round 1, which never mentions peers.
+    assert all("after debate" not in r["response"] for r in rows["p1__clean"])
+
+    first, _ = load_debate_teacher("train", use_round=1, select="all")
+    assert first["p1__clean"]["teacher_logprob"] == pytest.approx(0.4)
+
+
+def test_debate_teacher_rejects_unknown_settings():
+    """A typo must fail loudly rather than silently distil the wrong thing."""
+    from src.train_sft import load_debate_teacher
+
+    with pytest.raises(ValueError, match="use_round"):
+        load_debate_teacher("train", use_round=3)
+    with pytest.raises(ValueError, match="select"):
+        load_debate_teacher("train", select="majority")

@@ -439,14 +439,31 @@ def train(
     smoke: bool = False,
     split: SplitName = "train",
     text_source: str = "round1",
+    learning_rate: float | None = None,
+    undesirable_weight: float | None = None,
+    max_examples: int | None = None,
+    epochs: float | None = None,
+    tag: str = "",
 ) -> Path:
     """Train M7 end to end. The entry point ``main.py train-kto`` calls.
+
+    The override arguments exist for the diagnostic in ADR-0010: M7's first run
+    collapsed to answering "yes" almost always, and the overrides let a short
+    low-learning-rate run test whether that collapse is an optimisation
+    artefact or the objective faithfully reproducing a near-uninformative
+    target. Any override is recorded in the run metadata.
 
     Args:
         smoke: Train briefly on a handful of examples to prove the loop runs.
         split: The split to train on. Only train is valid for a real run.
         text_source: Which debate text the majority vote selects; see
             ``debate.load_consensus_responses``.
+        learning_rate: Override ``config.TRAINING.learning_rate``.
+        undesirable_weight: Override the weight computed from the class counts.
+        max_examples: Train on this many examples instead of all of them.
+        epochs: Override ``config.TRAINING.epochs``.
+        tag: Suffix for the run directory, so diagnostics do not overwrite the
+            reported run.
 
     Returns:
         The saved adapter directory.
@@ -463,6 +480,12 @@ def train(
     examples, dropped = build_kto_examples(items, consensus, tokenizer)
     if smoke:
         examples = examples[:SMOKE_EXAMPLES]
+    elif max_examples is not None:
+        # Seeded subsample, so a diagnostic still sees both classes.
+        import random as _random
+
+        _random.Random(seed).shuffle(examples)
+        examples = examples[:max_examples]
 
     n_desirable = sum(e.desirable for e in examples)
     n_undesirable = len(examples) - n_desirable
@@ -471,9 +494,10 @@ def train(
             f"KTO needs both classes; got {n_desirable} desirable and "
             f"{n_undesirable} undesirable"
         )
-    undesirable_weight = balanced_undesirable_weight(
-        n_desirable, n_undesirable, kto.desirable_weight
-    )
+    if undesirable_weight is None:
+        undesirable_weight = balanced_undesirable_weight(
+            n_desirable, n_undesirable, kto.desirable_weight
+        )
     logger.info(
         "built %d examples (%d desirable, %d dissenting, %.1f:1), dropped %d · "
         "undesirable weight %.2f",
@@ -490,7 +514,9 @@ def train(
     )
     logger.info("reference log-probs computed for %d examples", len(examples))
 
-    epochs = SMOKE_EPOCHS if smoke else int(round(t.epochs))
+    passes = t.epochs if epochs is None else epochs
+    epochs = SMOKE_EPOCHS if smoke else int(round(passes))
+    rate = t.learning_rate if learning_rate is None else learning_rate
     grad_accum = SMOKE_GRAD_ACCUM if smoke else t.gradient_accumulation_steps
     history = train_kto_epochs(
         model,
@@ -516,6 +542,9 @@ def train(
         "smoke": smoke,
         "text_source": text_source,
         "beta": kto.beta,
+        "learning_rate": rate,
+        "max_examples": max_examples,
+        "tag": tag,
         "desirable_weight": kto.desirable_weight,
         "undesirable_weight": round(undesirable_weight, 4),
         "epochs": epochs,

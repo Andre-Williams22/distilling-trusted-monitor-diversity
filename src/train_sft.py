@@ -442,7 +442,9 @@ def tokenise_example(
 # --------------------------------------------------------------------------
 
 #: Training-target modes. The two ensemble modes differ only in the teacher.
-TARGET_MODES = ("ensemble", "m1-ensemble", "labels", "consensus")
+TARGET_MODES = (
+    "ensemble", "m1-ensemble", "labels", "consensus", "consensus-kd",
+)
 
 
 def build_consensus_examples(
@@ -494,6 +496,108 @@ def build_consensus_examples(
         if built == 0:
             dropped.append(item.item_id)
     return examples, dropped
+
+
+def load_debate_teacher(
+    split: SplitName = "train", use_round: int = 2, select: str = "all"
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    """Load M9's teacher: the debate refines a **graded** target (ADR-0010).
+
+    Every MACA objective replaces the ensemble's graded scores with a discrete
+    majority verdict, and measured on train that verdict carries only 0.520
+    pAUC against the graded mean's 0.800 -- which is why the arms distilling it
+    rank in order of how much graded signal each objective preserves. M9 keeps
+    the debate but never votes: the target is the mean unrounded P(yes) across
+    the personas' **round-2** answers.
+
+    M9 vs M4 therefore isolates *deliberation* (both graded, one debated), and
+    M9 vs M5/M6/M7 isolates *voting* (all debated, one stays graded).
+
+    The reasoning text always comes from round 1, because 73.3% of round-2
+    answers cite peers a solo-served monitor does not have (ADR-0009).
+
+    Args:
+        split: The split to train on.
+        use_round: 1 for the independent answers, 2 for the post-debate ones.
+        select: ``"all"`` averages every persona; ``"consensus"`` averages only
+            those agreeing with the majority. Measured on train, selecting
+            costs signal (0.655 against 0.800), so ``"all"`` is the default.
+
+    Returns:
+        ``(targets_by_item, persona_rows_by_item)`` shaped exactly as
+        ``load_ensemble_teacher`` returns, so ``build_sft_example`` is unchanged.
+
+    Raises:
+        FileNotFoundError: If the teacher run or the debate has not been run.
+        ValueError: If ``use_round`` or ``select`` is unknown.
+    """
+    if use_round not in (1, 2):
+        raise ValueError(f"use_round must be 1 or 2, got {use_round!r}")
+    if select not in ("all", "consensus"):
+        raise ValueError(f"select must be 'all' or 'consensus', got {select!r}")
+
+    raw_path = config.GENERATIONS_DIR / f"teacher__{split}.json"
+    debate_path = config.GENERATIONS_DIR / f"debate__{split}.json"
+    for path in (raw_path, debate_path):
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{path.name} missing; run the teacher and debate stages first"
+            )
+
+    round_one: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in read_json_records(raw_path):
+        round_one[row["item_id"].split("::", 1)[0]].append(_without_label(row))
+
+    round_two: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in read_json_records(debate_path):
+        round_two[row["item_id"].split("::", 1)[0]].append(_without_label(row))
+
+    targets: dict[str, dict[str, Any]] = {}
+    personas: dict[str, list[dict[str, Any]]] = {}
+    for item_id, first in round_one.items():
+        second = round_two.get(item_id, [])
+        scored = second if use_round == 2 else first
+        if select == "consensus":
+            majority = majority_verdict(second)
+            if majority is None:
+                continue
+            scored = [row for row in scored if row.get("verdict") == majority]
+        logprobs = [
+            row["logprob_score"] for row in scored
+            if row.get("logprob_score") is not None
+        ]
+        texts = [
+            row["text_score"] for row in scored if row.get("text_score") is not None
+        ]
+        if not logprobs:
+            continue
+        targets[item_id] = {
+            "item_id": item_id,
+            "teacher_logprob": sum(logprobs) / len(logprobs),
+            "teacher_text": sum(texts) / len(texts) if texts else None,
+            "n_averaged": len(logprobs),
+        }
+        # Reasoning text is always round 1: it never mentions peers.
+        personas[item_id] = first
+    return targets, personas
+
+
+def majority_verdict(round_two_rows: list[dict[str, Any]]) -> str | None:
+    """Majority written verdict across one item's round-2 answers, or ``None``.
+
+    Args:
+        round_two_rows: Debate records for one item.
+
+    Returns:
+        ``"yes"``, ``"no"``, or ``None`` when no verdict holds a strict majority.
+    """
+    from collections import Counter
+
+    counts = Counter(row["verdict"] for row in round_two_rows if row.get("verdict"))
+    if not counts:
+        return None
+    verdict, top = counts.most_common(1)[0]
+    return verdict if top * 2 > sum(counts.values()) else None
 
 
 def load_ensemble_teacher(
@@ -1127,7 +1231,9 @@ def train(
             fallback to plain text SFT.
         split: The split to train on. Only train is valid for a real run.
         targets: ``"ensemble"`` (M4), ``"m1-ensemble"`` (M3), ``"labels"``
-            (the excluded label baseline) or ``"consensus"`` (M6, MV-SFT).
+            (the excluded label baseline), ``"consensus"`` (M6, MV-SFT) or
+            ``"consensus-kd"`` (M9: the debate refines a graded target without
+            voting, ADR-0010).
         text_source: For ``"consensus"`` only: which debate text the majority
             vote selects; see ``debate.load_consensus_responses``.
 
@@ -1142,7 +1248,9 @@ def train(
 
     if targets not in TARGET_MODES:
         raise ValueError(f"targets must be one of {TARGET_MODES}, got {targets!r}")
-    arm = {"ensemble": "m4", "consensus": "m6"}.get(targets, "m3")
+    arm = {"ensemble": "m4", "consensus": "m6", "consensus-kd": "m9"}.get(
+        targets, "m3"
+    )
     # MACA's MV-SFT is plain cross-entropy on the winning traces. The KD term is
     # M4's alone, so M6 vs M4 compares target *selection*, not two losses.
     if targets == "consensus":
@@ -1160,7 +1268,24 @@ def train(
     examples: list[SFTExample] = []
     dropped: list[str] = []
     extra: dict[str, Any] = {}
-    if targets == "consensus":
+    if targets == "consensus-kd":
+        teacher, personas = load_debate_teacher(split, use_round=2, select="all")
+        for item in items:
+            example = build_sft_example(
+                strip_label(item), teacher.get(item.item_id),
+                personas.get(item.item_id), tokenizer, yes_ids, no_ids,
+            )
+            if example is None:
+                dropped.append(item.item_id)
+            else:
+                examples.append(example)
+        averaged = [t["n_averaged"] for t in teacher.values()]
+        extra = {
+            "teacher": "round-2 graded mean, all personas",
+            "items_with_teacher": len(teacher),
+            "mean_personas_averaged": round(sum(averaged) / max(1, len(averaged)), 3),
+        }
+    elif targets == "consensus":
         from src.debate import load_consensus_responses
 
         consensus = load_consensus_responses(split, text_source=text_source)
@@ -1235,6 +1360,7 @@ def train(
         "m1-ensemble": "m3-sft-m1-ensemble",
         "labels": "m3-sft-labels",
         "consensus": "m6-maca-sft",
+        "consensus-kd": "m9-debate-graded",
     }[targets]
     directory = run_dir(f"{name}-smoke" if smoke else name)
     adapter = save_run(
