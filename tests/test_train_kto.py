@@ -149,3 +149,52 @@ def test_training_learns_to_separate_the_classes():
     )
     assert "loss decreased" in summarise_kto_history(history)
     assert history[-1]["accuracy"] >= history[0]["accuracy"]
+
+
+def test_overrides_reach_the_training_loop_and_the_run_name(monkeypatch, tmp_path):
+    """A recorded hyperparameter must be the one actually used.
+
+    Guards a real failure: `learning_rate` was computed and written into the run
+    metadata while the *default* was passed to the training loop, and `tag`
+    never reached the run directory, so two diagnostic runs overwrote each
+    other and one claimed a learning rate it never used.
+    """
+    import src.train_kto as train_kto
+
+    seen = {}
+
+    def fake_train_epochs(*args, **kwargs):
+        seen.update(kwargs)
+        return [{"loss": 1.0, "accuracy": 0.5, "reward_desirable": 0.0,
+                 "reward_undesirable": 0.0, "z_ref": 0.0}]
+
+    def fake_run_dir(name, root=None):
+        seen["run_name"] = name
+        path = tmp_path / name
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    monkeypatch.setattr(train_kto, "train_kto_epochs", fake_train_epochs)
+    monkeypatch.setattr(train_kto, "run_dir", fake_run_dir)
+    monkeypatch.setattr(train_kto, "load_student", lambda: object())
+    monkeypatch.setattr(train_kto, "reference_logps_for", lambda *a, **k: [0.0, 0.0])
+    monkeypatch.setattr(train_kto, "save_run",
+                        lambda model, history, directory, meta: directory / "adapter")
+    monkeypatch.setattr(train_kto, "load_split", lambda split: [])
+    monkeypatch.setattr(train_kto, "load_consensus_responses", lambda *a, **k: {})
+
+    class _Tok:
+        pad_token_id = 0
+
+    monkeypatch.setattr(train_kto, "load_tokenizer", lambda: _Tok())
+    monkeypatch.setattr(
+        train_kto, "build_kto_examples",
+        lambda items, consensus, tokenizer: (
+            [train_kto.KTOExample("a", [1, 2], [-100, 2], True),
+             train_kto.KTOExample("b", [3, 4], [-100, 4], False)], 0),
+    )
+
+    train_kto.train(learning_rate=2e-5, undesirable_weight=3.0, tag="lowlr")
+    assert seen["learning_rate"] == 2e-5, "override never reached the loop"
+    assert seen["undesirable_weight"] == 3.0
+    assert seen["run_name"].endswith("-lowlr"), "tag never reached the run name"

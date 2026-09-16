@@ -526,7 +526,7 @@ def train(
         beta=kto.beta,
         desirable_weight=kto.desirable_weight,
         undesirable_weight=undesirable_weight,
-        learning_rate=t.learning_rate,
+        learning_rate=rate,
         batch_size=t.per_device_batch_size,
         grad_accum=grad_accum,
         kl_batch_size=kto.kl_batch_size,
@@ -535,7 +535,8 @@ def train(
         tokenizer=tokenizer,
     )
 
-    directory = run_dir("m7-maca-kto-smoke" if smoke else "m7-maca-kto")
+    name = "m7-maca-kto-smoke" if smoke else "m7-maca-kto"
+    directory = run_dir(f"{name}-{tag}" if tag else name)
     adapter = save_run(model, history, directory, {
         "arm": "m7",
         "objective": "mv-kto",
