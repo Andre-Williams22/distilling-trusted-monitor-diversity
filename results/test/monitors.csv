@@ -10,4 +10,6 @@ M1 · sample 3,m1,member,0.7109,0.6702,0.7516
 M0 · single monitor,m0,arm,0.7094,0.6742,0.7461
 M1 · sample 1,m1,member,0.7094,0.6742,0.7461
 M1 · sample 2,m1,member,0.6993,0.6605,0.7394
+M6 · MACA (MV-SFT),m6,arm,0.6907,0.6492,0.7346
 M2 · reference solution,m2,member,0.6389,0.6013,0.6783
+M7 · MACA (MV-KTO),m7,arm,0.5157,0.5132,0.5185

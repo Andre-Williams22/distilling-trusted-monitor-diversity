@@ -25,7 +25,14 @@ ssh_cmd="ssh -p $port -o StrictHostKeyChecking=accept-new${VAST_SSH_KEY:+ -i $VA
 
 # Plain -az only: macOS ships openrsync, which rejects GNU-only options such as
 # --info. A rejected option aborts before copying anything.
+# A directory a given run never wrote (data/training on an M6/M7 box, say) is
+# not an error. Without this guard rsync's failure aborts the whole pull under
+# `set -e`, and the later directories -- including runs/ -- are never copied.
 for dir in results data/generations data/training runs logs; do
+  if ! $ssh_cmd "$host" "test -d $dir" 2>/dev/null; then
+    echo "  skip     $dir (not on this box)"
+    continue
+  fi
   mkdir -p "$dir"
   rsync -az -e "$ssh_cmd" "$host:$dir/" "$dir/"
 done

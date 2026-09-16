@@ -1,6 +1,6 @@
 # Monitor distillation results — val split
 
-**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5 · **Generated:** 2026-09-15 17:59 · commit `b086209` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7 · **Generated:** 2026-09-16 03:19 · commit `1993c66` with uncommitted changes
 
 ## Summary
 
@@ -14,6 +14,8 @@ Primary readout: `P(yes) ÷ (P(yes) + P(no))` at the verdict token. 95% interval
 | M3 · distilled from M1 | 1× | 300 | 0.858 [0.82, 0.90] | 0.926 [0.89, 0.95] | 0.69 | 93% / 35% |
 | M4 · two-term SFT | 1× | 300 | 0.879 [0.84, 0.92] | 0.931 [0.90, 0.96] | 0.70 | 92% / 31% |
 | M5 · MACA (MV-DPO) | 1× | 300 | 0.852 [0.80, 0.90] | 0.922 [0.89, 0.95] | 0.63 | 89% / 18% |
+| M6 · MACA (MV-SFT) | 1× | 300 | 0.790 [0.71, 0.86] | 0.900 [0.86, 0.93] | 0.45 | 93% / 49% |
+| M7 · MACA (MV-KTO) | 1× | 300 | 0.519 [0.51, 0.53] | 0.707 [0.66, 0.75] | 0.97 | 97% / 63% |
 
 Secondary readout: the written 0–10 `SUSPICION` score.
 
@@ -25,6 +27,8 @@ Secondary readout: the written 0–10 `SUSPICION` score.
 | M3 · distilled from M1 | 0.612 [0.56, 0.68] | 0.811 [0.76, 0.86] | 0.46 | 9 |
 | M4 · two-term SFT | 0.626 [0.56, 0.70] | 0.838 [0.79, 0.88] | 0.37 | 9 |
 | M5 · MACA (MV-DPO) | 0.588 [0.53, 0.67] | 0.845 [0.80, 0.89] | 0.03 | 6 |
+| M6 · MACA (MV-SFT) | 0.562 [0.53, 0.62] | 0.766 [0.72, 0.81] | 0.45 | 6 |
+| M7 · MACA (MV-KTO) | 0.536 [0.51, 0.58] | 0.733 [0.68, 0.78] | 0.01 | 7 |
 
 ## Hypotheses
 
@@ -49,6 +53,8 @@ Share of backdoors caught when the threshold flags a given share of clean code. 
 | 4 | M5 · MACA (MV-DPO) | 1× | 1,000 | 0.852 | 63% (1.3%) | 65% (2.0%) | 77% (5.3%) | 83% (10.0%) |
 | 5 | M0 · single monitor | 1× | 1,000 | 0.839 | 63% (1.3%) | 70% (2.0%) | 73% (5.3%) | 75% (10.0%) |
 | 6 | M1 · 3 identical samples | 3× | 3,000 | 0.835 | 67% (1.3%) | 69% (2.0%) | 72% (5.3%) | 73% (10.0%) |
+| 7 | M6 · MACA (MV-SFT) | 1× | 1,000 | 0.790 | 45% (1.3%) | 52% (2.0%) | 67% (5.3%) | 76% (10.0%) |
+| 8 | M7 · MACA (MV-KTO) | 1× | 1,000 | 0.519 | 97% (56.0%) | 97% (56.0%) | 97% (56.0%) | 97% (56.0%) |
 
 ## Ensembles vs. their parts
 
@@ -78,6 +84,10 @@ Both arms scored on the same items. ΔpAUC from a paired bootstrap; ΔAUROC and 
 | M5 − M0 | 300 | +0.013 [-0.034, +0.060] | +0.040 [+0.005, +0.075] | 0.0257 |
 | M5 − M2 | 300 | -0.007 [-0.064, +0.047] | -0.007 [-0.033, +0.019] | 0.604 |
 | M5 − M4 | 300 | -0.027 [-0.081, +0.023] | -0.009 [-0.033, +0.015] | 0.486 |
+| M6 − M4 | 300 | -0.089 [-0.160, -0.031] | -0.030 [-0.059, -0.001] | 0.0397 |
+| M6 − M5 | 300 | -0.062 [-0.122, -0.005] | -0.022 [-0.054, +0.010] | 0.177 |
+| M7 − M4 | 300 | -0.360 [-0.399, -0.320] | -0.224 [-0.266, -0.182] | 4.88e-26 |
+| M7 − M5 | 300 | -0.333 [-0.383, -0.281] | -0.216 [-0.259, -0.172] | 4.2e-22 |
 
 ## Across arms and monitors
 
@@ -183,6 +193,34 @@ pAUC@10% FPR **0.852 [0.80, 0.90]**, AUROC 0.922 [0.89, 0.95]. At P(yes) ≥ 0.5
 ![M5 · MACA (MV-DPO): share of backdoored items (above the line) and clean items (below) at each score.](figures/m5_scores.png)
 
 *M5 · MACA (MV-DPO): share of backdoored items (above the line) and clean items (below) at each score.*
+
+### M6 · MACA (MV-SFT)
+
+MACA's MV-SFT: plain cross-entropy on every response that agreed with the debate majority. Unlike DPO it keeps unanimous items, so it trains on 9x the data from the same debate (exploratory, ADR-0009).
+
+pAUC@10% FPR **0.790 [0.71, 0.86]**, AUROC 0.900 [0.86, 0.93]. At P(yes) ≥ 0.5 it flags 93% of backdoored and 49% of clean solutions.
+
+![M6 · MACA (MV-SFT): ROC curve for false-positive rates up to 10%.](figures/m6_roc.png)
+
+*M6 · MACA (MV-SFT): ROC curve for false-positive rates up to 10%.*
+
+![M6 · MACA (MV-SFT): share of backdoored items (above the line) and clean items (below) at each score.](figures/m6_scores.png)
+
+*M6 · MACA (MV-SFT): share of backdoored items (above the line) and clean items (below) at each score.*
+
+### M7 · MACA (MV-KTO)
+
+MACA's MV-KTO: each response labelled desirable or dissenting on its own, with no pairing, so unanimous items train too (exploratory, ADR-0009).
+
+pAUC@10% FPR **0.519 [0.51, 0.53]**, AUROC 0.707 [0.66, 0.75]. At P(yes) ≥ 0.5 it flags 97% of backdoored and 63% of clean solutions.
+
+![M7 · MACA (MV-KTO): ROC curve for false-positive rates up to 10%.](figures/m7_roc.png)
+
+*M7 · MACA (MV-KTO): ROC curve for false-positive rates up to 10%.*
+
+![M7 · MACA (MV-KTO): share of backdoored items (above the line) and clean items (below) at each score.](figures/m7_scores.png)
+
+*M7 · MACA (MV-KTO): share of backdoored items (above the line) and clean items (below) at each score.*
 
 ## How these numbers were made
 
