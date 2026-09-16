@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# M8: MACA's MV-GRPO on individually labelled debate answers (ADR-0009). Run ON
-# THE VM after infra/vast/remote_setup.sh, inside tmux:
+# M8: the debate refines a GRADED target, with no vote (ADR-0010). Run ON THE VM
+# after infra/vast/remote_setup.sh, inside tmux:
 #
 #   cd ~ && tmux new -d -s m8 'bash infra/vast/run_m8.sh'
 #   tmux switch-client -t m8
 #
-# Needs the same two uploaded files as M6 -- no generation happens here:
+# Needs two files uploaded from the laptop -- no generation happens here:
 #   data/generations/teacher__train.json   round-1 persona answers (the text)
 #   data/generations/debate__train.json    round-2 transcripts (the vote)
 #
-# The only online arm: each step samples a group of answers from the CURRENT
-# policy and rewards those whose verdict matches the frozen debate majority.
-# Rollouts dominate the runtime, so this is much slower than M6 and M7.
-#
 # Stages:
 #   1. Smoke-train to prove the loop.
-#   2. Full MV-GRPO training.
+#   2. Full training on the round-2 graded mean across all three personas.
 #   3. Serve the adapter and score M8 on val, then test.
 set -euo pipefail
 cd "$HOME"
@@ -36,7 +32,7 @@ wait_for_vllm() {
 }
 
 stop_vllm() {
-  for session in vllm vllm-m3 vllm-m4 vllm-m5 vllm-m6 vllm-m7 vllm-m8; do
+  for session in vllm vllm-m3 vllm-m4 vllm-m5 vllm-m6 vllm-m7 vllm-m8 vllm-m8; do
     tmux kill-session -t "$session" 2>/dev/null || true
   done
   for _ in $(seq 1 30); do
@@ -54,13 +50,13 @@ for f in data/generations/m8__val.json data/generations/m8__test.json; do
   [ -e "$f" ] && { echo "$f exists; archive it first so a different model's scores are not resumed" >&2; exit 1; }
 done
 
-step "1. Smoke-train to prove the loop (text source: $TEXT_SOURCE)"
+step "1. Smoke-train to prove the loop"
 stop_vllm
-.venv/bin/python main.py train-grpo --text-source "$TEXT_SOURCE" --smoke
+.venv/bin/python main.py train-sft --targets consensus-kd --smoke
 
-step "2. Full MV-GRPO training"
-.venv/bin/python main.py train-grpo --text-source "$TEXT_SOURCE"
-adapter=$(ls -td runs/*__m8-maca-grpo__*/adapter | head -1)
+step "2. Full training on the debate-refined graded target"
+.venv/bin/python main.py train-sft --targets consensus-kd
+adapter=$(ls -td runs/*__m8-debate-graded__*/adapter | head -1)
 echo "  adapter: $adapter"
 
 step "3. Serve the adapter and score M8 on val, then test"
@@ -84,4 +80,4 @@ for split in ("val", "test"):
 PY
 
 echo
-echo "Done. From the laptop: VAST_SSH_KEY=~/.ssh/arena_key bash infra/vast/pull_results.sh"
+echo "Done. Next: tmux new -d -s m7diag 'bash infra/vast/run_m7_diag.sh'"

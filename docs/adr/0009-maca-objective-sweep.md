@@ -12,7 +12,8 @@ p = 6.3e-05**. The other three objectives train on the **same debate
 transcripts already generated**, so replicating them costs GPU time for
 training and scoring only -- no new generation.
 
-They are added as **M6 (MV-SFT)**, **M7 (MV-KTO)** and **M8 (MV-GRPO)**.
+They are added as **M6 (MV-SFT)** and **M7 (MV-KTO)**. MV-GRPO was implemented
+and unit-tested but **never run**, so it carries no arm number; see ADR-0010.
 
 ## This is registered before the runs, not after
 
@@ -38,9 +39,10 @@ yields preference pairs. MV-DPO therefore trained on **480 pairs from 240 of
 | MV-DPO (M5) | 480 pairs | -- |
 | MV-SFT (M6) | 4,468 agreeing responses | 9.3x |
 | MV-KTO (M7) | 4,708 labelled responses (4,468 desirable / 240 undesirable) | 9.8x |
-| MV-GRPO (M8) | 1,571 prompts with a majority verdict as reward | rollout-bound |
+| MV-GRPO (no arm; unrun) | 1,571 prompts with a majority verdict as reward | rollout-bound |
 
-**If M5's loss was caused by sparse preference data, M6 and M7 beat M5.** If
+**If M5's loss was caused by sparse preference data, M6 and M7 beat M5.**
+(Registered before the runs. It was **falsified**: see ADR-0010.) If
 instead the debate signal itself is weak, or the no-context training choice is
 what costs, M6 and M7 land at or below M5 despite ~9x the data.
 
@@ -93,7 +95,7 @@ is now a fourth candidate explanation for its result. An M5 re-run with
   desirable:undesirable working range, so the undesirable weight is raised to
   bring the effective ratio into that range. That reweighting is a documented
   deviation and a candidate explanation for any M7 result.
-- **M8 (MV-GRPO):** reward is whether a sampled completion's written verdict
+- **MV-GRPO (unrun):** reward would be whether a sampled completion's written verdict
   matches the **frozen** majority verdict from the debate already run, so no
   re-debate is needed; group-normalised advantage with a KL penalty to the
   adapter-disabled reference. It is run **last** because its rollout loop is the
@@ -101,9 +103,9 @@ is now a fourth candidate explanation for its result. An M5 re-run with
 
 ## Consequences
 
-- Nine arms means nine-arm figures. The all-arms ROC plot is already crowded at
-  six; M6-M8 get their own panel rather than being added to the primary chart.
+- The all-arms ROC plot is crowded past six arms; the exploratory arms are
+  labelled as such in the report rather than hidden.
 - Every arm still scores through the same vLLM path at 1x inference cost, so the
   cost axis of the frontier plot is unchanged.
-- If GRPO does not fit the remaining schedule it is dropped and reported as not
-  attempted, not as a null result.
+- GRPO did not fit the schedule. It is reported as **not attempted**, never as a
+  null result, and holds no arm number so no figure implies a missing run.

@@ -1,4 +1,7 @@
-"""Train M8: MACA's MV-GRPO against the frozen majority verdict (ADR-0009).
+"""MACA's MV-GRPO against the frozen majority verdict.
+
+**Implemented and unit-tested, but never run, so it has no arm number**
+(ADR-0010). Running it needs 4-8 GPU hours of rollouts.
 
 The only online arm. For each item the policy samples a group of ``G`` answers,
 each is rewarded 1 when its written verdict matches the debate's majority and 0
@@ -15,7 +18,7 @@ the sample, and the KL term uses the k3 estimator against the adapter-disabled
 reference, as in the GRPO paper.
 
 The reward is **frozen**: the majority verdict comes from the debate already
-run, so no debate happens inside the training loop. That keeps M8 comparable to
+run, so no debate happens inside the training loop. That would keep it comparable to
 M5, M6 and M7, which all learn from the same vote, and it is the only reason a
 rollout loop fits the schedule at all.
 
@@ -513,7 +516,7 @@ def train(
     split: SplitName = "train",
     text_source: str = "round1",
 ) -> Path:
-    """Train M8 end to end. The entry point ``main.py train-grpo`` calls.
+    """Train an MV-GRPO adapter. The entry point ``main.py train-grpo`` calls.
 
     Args:
         smoke: Roll out a handful of prompts to prove the loop runs.
@@ -567,9 +570,9 @@ def train(
         pad_id=tokenizer.pad_token_id,
     )
 
-    directory = run_dir("m8-maca-grpo-smoke" if smoke else "m8-maca-grpo")
+    directory = run_dir("mv-grpo-smoke" if smoke else "mv-grpo")
     adapter = save_run(model, history, directory, {
-        "arm": "m8",
+        "arm": "mv-grpo",
         "objective": "mv-grpo",
         "smoke": smoke,
         "text_source": text_source,

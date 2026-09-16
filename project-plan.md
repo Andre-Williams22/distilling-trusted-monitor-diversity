@@ -208,6 +208,9 @@ monitor has no consensus signal to internalize.
 | **M3** | **Two-term SFT distilled from M1** — the identical ensemble; every setting as M4 (ADR-0008; *follow-up, 15 Sep*) | **1×** | isolates diversity: does distilling a diverse teacher beat an identical one? |
 | **M4** | **Two-term SFT** — distilled from ensemble mean scores (ADR-0005) | **1×** | genuinely open — the honest test of whether distillation works at all |
 | **M5** | **MACA (MV-DPO)** — DPO on persona-debate consensus pairs (ADR-0003) | **1×** | target: ≥60% of M2's gain |
+| **M6** | **MACA (MV-SFT)** — cross-entropy on the debate's majority answers (ADR-0009) | **1×** | exploratory |
+| **M7** | **MACA (MV-KTO)** — each answer labelled desirable or dissenting (ADR-0009) | **1×** | exploratory |
+| **M8** | **Debate, graded target** — the debate refines a graded score, with no vote (ADR-0010) | **1×** | exploratory; isolates voting from deliberation |
 
 **Arm numbering changed on 15 Sep.** The MACA arm was M3 until then and
 is now **M5**; M3 is the new label-supervised baseline. Anything dated before

@@ -1,4 +1,4 @@
-"""GRPO's reward, advantage and loss maths. Needs torch."""
+"""MV-GRPO's reward, advantage and loss maths. Needs torch."""
 
 from __future__ import annotations
 

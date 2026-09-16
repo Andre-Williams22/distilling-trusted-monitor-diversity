@@ -36,9 +36,7 @@ import sys
 import time
 from collections.abc import Sequence
 
-ARM_CHOICES = (
-    "m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9",
-)
+ARM_CHOICES = ("m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8")
 SPLIT_CHOICES = ("train", "val", "test")
 
 
@@ -161,7 +159,7 @@ def cmd_train_kto(args: argparse.Namespace) -> int:
 
 
 def cmd_train_grpo(args: argparse.Namespace) -> int:
-    """Train M8 with MACA's MV-GRPO against the majority verdict (ADR-0009)."""
+    """Train MACA's MV-GRPO against the majority verdict. Never run; ADR-0010."""
     from src.train_grpo import train
 
     run = train(smoke=args.smoke, text_source=args.text_source)
@@ -321,7 +319,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Train on the first 20 pairs to prove the loop runs.",
     )
 
-    sub = add("train-grpo", cmd_train_grpo, "Train M8 (MACA, MV-GRPO).")
+    sub = add(
+        "train-grpo", cmd_train_grpo,
+        "MACA MV-GRPO (implemented, never run; no arm number).",
+    )
     sub.add_argument(
         "--smoke", action="store_true",
         help="Roll out a handful of prompts to prove the loop runs.",

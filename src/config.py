@@ -349,7 +349,10 @@ class KTOConfig:
 
 @dataclass(frozen=True)
 class GRPOConfig:
-    """M8-specific settings: MACA's MV-GRPO (ADR-0009).
+    """Settings for MACA's MV-GRPO.
+
+    **Implemented but never run, so it carries no arm number** (ADR-0010).
+    Kept because the code is tested and a future run needs only GPU time.
 
     The reward is frozen: a sampled completion scores 1 when its written
     verdict matches the majority verdict from the debate already run, so no
@@ -414,8 +417,7 @@ ARMS: tuple[Arm, ...] = (
     Arm("m5", "MACA MV-DPO on consensus pairs", 1, (BASELINE_PROMPT,), True, 1),
     Arm("m6", "MACA MV-SFT on majority responses", 1, (BASELINE_PROMPT,), True, 1),
     Arm("m7", "MACA MV-KTO on labelled responses", 1, (BASELINE_PROMPT,), True, 1),
-    Arm("m8", "MACA MV-GRPO on majority reward", 1, (BASELINE_PROMPT,), True, 1),
-    Arm("m9", "Consensus-selected graded KD", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m8", "Debate-refined graded target", 1, (BASELINE_PROMPT,), True, 1),
 )
 
 #: Default instances. Stages take these as arguments rather than reaching for

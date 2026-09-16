@@ -501,17 +501,17 @@ def build_consensus_examples(
 def load_debate_teacher(
     split: SplitName = "train", use_round: int = 2, select: str = "all"
 ) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, Any]]]]:
-    """Load M9's teacher: the debate refines a **graded** target (ADR-0010).
+    """Load M8's teacher: the debate refines a **graded** target (ADR-0010).
 
     Every MACA objective replaces the ensemble's graded scores with a discrete
     majority verdict, and measured on train that verdict carries only 0.520
     pAUC against the graded mean's 0.800 -- which is why the arms distilling it
-    rank in order of how much graded signal each objective preserves. M9 keeps
+    rank in order of how much graded signal each objective preserves. M8 keeps
     the debate but never votes: the target is the mean unrounded P(yes) across
     the personas' **round-2** answers.
 
-    M9 vs M4 therefore isolates *deliberation* (both graded, one debated), and
-    M9 vs M5/M6/M7 isolates *voting* (all debated, one stays graded).
+    M8 vs M4 therefore isolates *deliberation* (both graded, one debated), and
+    M8 vs M5/M6/M7 isolates *voting* (all debated, one stays graded).
 
     The reasoning text always comes from round 1, because 73.3% of round-2
     answers cite peers a solo-served monitor does not have (ADR-0009).
@@ -1232,7 +1232,7 @@ def train(
         split: The split to train on. Only train is valid for a real run.
         targets: ``"ensemble"`` (M4), ``"m1-ensemble"`` (M3), ``"labels"``
             (the excluded label baseline), ``"consensus"`` (M6, MV-SFT) or
-            ``"consensus-kd"`` (M9: the debate refines a graded target without
+            ``"consensus-kd"`` (M8: the debate refines a graded target without
             voting, ADR-0010).
         text_source: For ``"consensus"`` only: which debate text the majority
             vote selects; see ``debate.load_consensus_responses``.
@@ -1248,7 +1248,7 @@ def train(
 
     if targets not in TARGET_MODES:
         raise ValueError(f"targets must be one of {TARGET_MODES}, got {targets!r}")
-    arm = {"ensemble": "m4", "consensus": "m6", "consensus-kd": "m9"}.get(
+    arm = {"ensemble": "m4", "consensus": "m6", "consensus-kd": "m8"}.get(
         targets, "m3"
     )
     # MACA's MV-SFT is plain cross-entropy on the winning traces. The KD term is
@@ -1360,7 +1360,7 @@ def train(
         "m1-ensemble": "m3-sft-m1-ensemble",
         "labels": "m3-sft-labels",
         "consensus": "m6-maca-sft",
-        "consensus-kd": "m9-debate-graded",
+        "consensus-kd": "m8-debate-graded",
     }[targets]
     directory = run_dir(f"{name}-smoke" if smoke else name)
     adapter = save_run(

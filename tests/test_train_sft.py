@@ -207,7 +207,7 @@ def test_m1_teacher_averages_the_three_samples_and_strips_labels(tmp_path, monke
 
 
 def test_debate_teacher_is_graded_not_a_vote(tmp_path, monkeypatch):
-    """M9's target is a mean probability, not a 0/1 verdict (ADR-0010)."""
+    """M8's target is a mean probability, not a 0/1 verdict (ADR-0010)."""
     import json
 
     from src import config

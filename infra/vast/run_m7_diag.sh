@@ -31,7 +31,7 @@ wait_for_vllm() {
 }
 
 stop_vllm() {
-  for session in vllm vllm-m3 vllm-m4 vllm-m5 vllm-m6 vllm-m7 vllm-m8 vllm-m9 vllm-diag; do
+  for session in vllm vllm-m3 vllm-m4 vllm-m5 vllm-m6 vllm-m7 vllm-m8 vllm-mvgrpo vllm-diag; do
     tmux kill-session -t "$session" 2>/dev/null || true
   done
   for _ in $(seq 1 30); do

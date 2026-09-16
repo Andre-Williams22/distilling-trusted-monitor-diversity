@@ -7,7 +7,7 @@ M5 · MACA (MV-DPO),m5,arm,0.8517,0.7991,0.9022
 M0 · single monitor,m0,arm,0.8388,0.7932,0.8835
 M1 · sample 1,m1,member,0.8388,0.7932,0.8835
 M2 · attacker,m2,member,0.8379,0.7895,0.8891
-"M9 · debate, graded target",m9,arm,0.8353,0.793,0.88
+"M8 · debate, graded target",m8,arm,0.8353,0.793,0.88
 M1 · 3 identical samples,m1,arm,0.8346,0.7883,0.8781
 M1 · sample 2,m1,member,0.8229,0.7631,0.8794
 M6 · MACA (MV-SFT),m6,arm,0.7902,0.7142,0.8559

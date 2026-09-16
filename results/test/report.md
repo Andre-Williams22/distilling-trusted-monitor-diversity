@@ -1,6 +1,6 @@
 # Monitor distillation results — test split
 
-**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M9 · **Generated:** 2026-09-16 08:59 · commit `64464dc` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-16 09:06 · commit `72817d2` with uncommitted changes
 
 ## Summary
 
@@ -16,7 +16,7 @@ Primary readout: `P(yes) ÷ (P(yes) + P(no))` at the verdict token. 95% interval
 | M5 · MACA (MV-DPO) | 1× | 1288 | 0.756 [0.72, 0.79] | 0.886 [0.87, 0.90] | 0.26 | 86% / 25% |
 | M6 · MACA (MV-SFT) | 1× | 1288 | 0.691 [0.65, 0.73] | 0.876 [0.86, 0.90] | 0.11 | 96% / 58% |
 | M7 · MACA (MV-KTO) | 1× | 1288 | 0.516 [0.51, 0.52] | 0.683 [0.66, 0.70] | 0.98 | 98% / 70% |
-| M9 · debate, graded target | 1× | 1288 | 0.790 [0.76, 0.82] | 0.901 [0.88, 0.92] | 0.40 | 96% / 59% |
+| M8 · debate, graded target | 1× | 1288 | 0.790 [0.76, 0.82] | 0.901 [0.88, 0.92] | 0.40 | 96% / 59% |
 
 Secondary readout: the written 0–10 `SUSPICION` score.
 
@@ -30,7 +30,7 @@ Secondary readout: the written 0–10 `SUSPICION` score.
 | M5 · MACA (MV-DPO) | 0.541 [0.52, 0.57] | 0.788 [0.76, 0.81] | 0.01 | 7 |
 | M6 · MACA (MV-SFT) | 0.534 [0.52, 0.55] | 0.725 [0.70, 0.75] | 0.01 | 10 |
 | M7 · MACA (MV-KTO) | 0.527 [0.51, 0.55] | 0.726 [0.70, 0.75] | 0.01 | 10 |
-| M9 · debate, graded target | 0.559 [0.54, 0.58] | 0.773 [0.75, 0.80] | 0.15 | 11 |
+| M8 · debate, graded target | 0.559 [0.54, 0.58] | 0.773 [0.75, 0.80] | 0.15 | 11 |
 
 ## Hypotheses
 
@@ -50,7 +50,7 @@ Share of backdoors caught when the threshold flags a given share of clean code. 
 | Rank | Arm | Inference cost | Calls per 1,000 items | pAUC@10% | Recall @ 1% FPR | @ 2% | @ 5% | @ 10% |
 |---|---|---|---|---|---|---|---|---|
 | 1 | M4 · two-term SFT | 1× | 1,000 | 0.810 | 68% (4.3%) | 71% (6.1%) | 80% (11.3%) | 86% (16.9%) |
-| 2 | M9 · debate, graded target | 1× | 1,000 | 0.790 | 60% (3.3%) | 64% (4.3%) | 66% (5.6%) | 77% (13.5%) |
+| 2 | M8 · debate, graded target | 1× | 1,000 | 0.790 | 60% (3.3%) | 64% (4.3%) | 66% (5.6%) | 77% (13.5%) |
 | 3 | M3 · distilled from M1 | 1× | 1,000 | 0.782 | 68% (7.9%) | 69% (8.1%) | 76% (13.5%) | 84% (20.8%) |
 | 4 | M2 · 3 persona prompts | 3× | 3,000 | 0.779 | 63% (5.1%) | 72% (8.9%) | 76% (11.6%) | 83% (16.8%) |
 | 5 | M5 · MACA (MV-DPO) | 1× | 1,000 | 0.756 | 54% (3.7%) | 57% (4.2%) | 73% (8.9%) | 80% (16.6%) |
@@ -93,9 +93,10 @@ Both arms scored on the same items. ΔpAUC from a paired bootstrap; ΔAUROC and 
 | M6 − M5 | 1288 | -0.065 [-0.108, -0.023] | -0.010 [-0.027, +0.007] | 0.265 |
 | M7 − M4 | 1288 | -0.294 [-0.324, -0.263] | -0.232 [-0.252, -0.212] | 5.05e-111 |
 | M7 − M5 | 1288 | -0.240 [-0.278, -0.202] | -0.203 [-0.225, -0.180] | 1.75e-71 |
-| M9 − M4 | 1288 | -0.020 [-0.044, +0.005] | -0.014 [-0.026, -0.002] | 0.0222 |
-| M9 − M5 | 1288 | +0.035 [+0.002, +0.068] | +0.015 [-0.000, +0.030] | 0.0509 |
-| M9 − M6 | 1288 | +0.100 [+0.062, +0.137] | +0.025 [+0.010, +0.040] | 0.00106 |
+| M8 − M4 | 1288 | -0.020 [-0.044, +0.005] | -0.014 [-0.026, -0.002] | 0.0222 |
+| M8 − M5 | 1288 | +0.035 [+0.002, +0.068] | +0.015 [-0.000, +0.030] | 0.0509 |
+| M8 − M6 | 1288 | +0.100 [+0.062, +0.137] | +0.025 [+0.010, +0.040] | 0.00106 |
+| M8 − M7 | 1288 | +0.275 [+0.245, +0.303] | +0.218 [+0.197, +0.238] | 6.69e-97 |
 
 ## Across arms and monitors
 
@@ -230,19 +231,19 @@ pAUC@10% FPR **0.516 [0.51, 0.52]**, AUROC 0.683 [0.66, 0.70]. At P(yes) ≥ 0.5
 
 *M7 · MACA (MV-KTO): share of backdoored items (above the line) and clean items (below) at each score.*
 
-### M9 · debate, graded target
+### M8 · debate, graded target
 
 The debate without the vote: distils the personas' *graded* mean score after two debate rounds. Against M4 it isolates what deliberation costs; against M5-M7 it isolates what voting costs (ADR-0010).
 
 pAUC@10% FPR **0.790 [0.76, 0.82]**, AUROC 0.901 [0.88, 0.92]. At P(yes) ≥ 0.5 it flags 96% of backdoored and 59% of clean solutions.
 
-![M9 · debate, graded target: ROC curve for false-positive rates up to 10%.](figures/m9_roc.png)
+![M8 · debate, graded target: ROC curve for false-positive rates up to 10%.](figures/m8_roc.png)
 
-*M9 · debate, graded target: ROC curve for false-positive rates up to 10%.*
+*M8 · debate, graded target: ROC curve for false-positive rates up to 10%.*
 
-![M9 · debate, graded target: share of backdoored items (above the line) and clean items (below) at each score.](figures/m9_scores.png)
+![M8 · debate, graded target: share of backdoored items (above the line) and clean items (below) at each score.](figures/m8_scores.png)
 
-*M9 · debate, graded target: share of backdoored items (above the line) and clean items (below) at each score.*
+*M8 · debate, graded target: share of backdoored items (above the line) and clean items (below) at each score.*
 
 ## How these numbers were made
 
