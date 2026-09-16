@@ -300,20 +300,146 @@ def consensus_pairs(
         ``None`` when fewer than two answers are readable or no verdict holds a
         strict majority; pairs are empty when every readable answer agrees.
     """
+    verdict, agree, dissent = consensus_responses(answers)
+    if verdict is None:
+        return None, []
+    pairs = list(itertools.product(agree, dissent))[:max_pairs]
+    return verdict, pairs
+
+
+def consensus_responses(
+    answers: Sequence[dict[str, Any]],
+) -> tuple[str | None, list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split one item's round-2 answers into majority and dissent.
+
+    The unpaired view of the same vote ``consensus_pairs`` uses. MV-SFT trains
+    on the majority list and MV-KTO on both lists (ADR-0009), so unlike DPO's
+    pairs a unanimous item still contributes: its whole majority list survives
+    and its dissent list is empty.
+
+    Args:
+        answers: Round-2 records for one item.
+
+    Returns:
+        ``(majority_verdict, agreeing, dissenting)``. The verdict is ``None``
+        when fewer than two answers are readable or no verdict holds a strict
+        majority, and both lists are then empty.
+    """
     readable = [
         a for a in answers
         if a.get("verdict") is not None and canonical_response(a["response"])
     ]
     if len(readable) < 2:
-        return None, []
+        return None, [], []
     counts = Counter(a["verdict"] for a in readable)
     verdict, top = counts.most_common(1)[0]
     if top * 2 <= len(readable):
-        return None, []
+        return None, [], []
     agree = [a for a in readable if a["verdict"] == verdict]
     dissent = [a for a in readable if a["verdict"] != verdict]
-    pairs = list(itertools.product(agree, dissent))[:max_pairs]
-    return verdict, pairs
+    return verdict, agree, dissent
+
+
+#: Where a training target's *text* comes from. The vote always comes from the
+#: debate; this chooses which text that vote selects (ADR-0009).
+TEXT_SOURCES = ("round1", "round2")
+
+
+def load_consensus_responses(
+    split: SplitName = "train",
+    limit: int | None = None,
+    text_source: str = "round1",
+) -> dict[str, dict[str, Any]]:
+    """Read debate transcripts and vote, returning per-item majority and dissent.
+
+    Feeds M6 (MV-SFT), M7 (MV-KTO) and M8 (MV-GRPO). Labels are never read
+    here; the vote is the only supervision, as in MACA.
+
+    ``text_source`` decides which text the vote selects, and it matters because
+    these arms are served **alone** under the baseline prompt:
+
+    - ``"round1"`` (default): each persona's independent, context-free answer,
+      kept when that persona's own round-1 verdict matches the post-debate
+      majority, so text and verdict never contradict each other. 0.5% of
+      round-1 answers mention a peer.
+    - ``"round2"``: the post-debate answer, as M5 was trained. **73.3% of these
+      mention peers** ("all reviewers agree"), which a solo monitor does not
+      have -- a train/serve mismatch, and a candidate explanation for M5's
+      result.
+
+    Args:
+        split: Which split's transcripts to read.
+        limit: Match a ``debate --limit`` run.
+        text_source: ``"round1"`` or ``"round2"``.
+
+    Returns:
+        ``{item_id: {"majority": verdict, "agree": [...], "dissent": [...]}}``,
+        with each response canonicalised. Items without a majority are absent,
+        as are items where the chosen text source yields nothing.
+
+    Raises:
+        FileNotFoundError: If the debate has not been run.
+        ValueError: If ``text_source`` is not a known source.
+    """
+    if text_source not in TEXT_SOURCES:
+        raise ValueError(
+            f"text_source must be one of {TEXT_SOURCES}, got {text_source!r}"
+        )
+    suffix = f"__limit{limit}" if limit is not None else ""
+    transcripts = config.GENERATIONS_DIR / f"debate__{split}{suffix}.json"
+    if not transcripts.exists():
+        raise FileNotFoundError(
+            f"{transcripts.name} missing; run `python main.py debate "
+            f"--split {split}` on the GPU box first"
+        )
+    by_item: dict[str, list[dict[str, Any]]] = {}
+    for record in read_json_records(transcripts):
+        by_item.setdefault(record["item_id"].split("::", 1)[0], []).append(record)
+
+    round_one = load_round_one(split) if text_source == "round1" else {}
+
+    consensus: dict[str, dict[str, Any]] = {}
+    for item_id, answers in sorted(by_item.items()):
+        verdict, agree, dissent = consensus_responses(answers)
+        if verdict is None:
+            continue
+        if text_source == "round2":
+            entry = {
+                "majority": verdict,
+                "agree": _as_targets(agree),
+                "dissent": _as_targets(dissent),
+            }
+        else:
+            texts = round_one.get(item_id, {})
+            matched, mismatched = [], []
+            for answer in answers:
+                text = texts.get(answer["persona"])
+                own = answer.get("round_one_verdict")
+                if text is None or own is None:
+                    continue
+                target = {"persona": answer["persona"], "response": text}
+                if own == verdict:
+                    matched.append(target)
+                else:
+                    mismatched.append(target)
+            entry = {
+                "majority": verdict,
+                "agree": _as_targets(matched),
+                "dissent": _as_targets(mismatched),
+            }
+        if entry["agree"] or entry["dissent"]:
+            consensus[item_id] = entry
+    return consensus
+
+
+def _as_targets(answers: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Canonicalise a list of answers into training targets, dropping malformed."""
+    targets = []
+    for answer in answers:
+        response = canonical_response(answer["response"])
+        if response is not None:
+            targets.append({"persona": answer["persona"], "response": response})
+    return targets
 
 
 def build_preference_pairs(

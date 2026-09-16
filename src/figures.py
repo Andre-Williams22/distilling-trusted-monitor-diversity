@@ -43,6 +43,9 @@ ARM_TITLES = {
     "m3": "M3 · distilled from M1",
     "m4": "M4 · two-term SFT",
     "m5": "M5 · MACA (MV-DPO)",
+    "m6": "M6 · MACA (MV-SFT)",
+    "m7": "M7 · MACA (MV-KTO)",
+    "m8": "M8 · MACA (MV-GRPO)",
 }
 
 #: Fixed per arm, in run order of the palette's validated categorical slots.
@@ -54,6 +57,9 @@ ARM_COLORS = {
     "m3": "#eda100",
     "m4": "#e87ba4",
     "m5": "#008300",
+    "m6": "#7b52d6",
+    "m7": "#00868f",
+    "m8": "#a8541c",
 }
 
 SURFACE = "#fcfcfb"

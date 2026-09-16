@@ -129,3 +129,59 @@ def test_build_pairs_never_writes_labels(tmp_path, monkeypatch):
     stats = json.loads(path.with_suffix(".stats.json").read_text())
     assert stats["verdicts_changed_in_round2"] == 2
     assert stats["diagnostic_majority_matches_label"] == 1.0
+
+
+def test_round1_text_source_avoids_peer_references(tmp_path, monkeypatch):
+    """The vote comes from the debate; the text comes from context-free round 1."""
+    import json
+
+    from src import config
+    from src.debate import load_consensus_responses
+
+    generations = tmp_path / "gen"
+    generations.mkdir()
+    monkeypatch.setattr(config, "GENERATIONS_DIR", generations)
+
+    personas = [p.stem for p in config.PERSONA_PROMPTS]
+    # Round 1: two say no, one says yes. Round 2: the dissenter is talked round,
+    # so the majority is "no" and every round-1 "no" becomes a target.
+    teacher = [
+        {"item_id": f"p1__clean::{persona}", "prompt_name": persona, "label": 0,
+         "response": f"REASONING: Independent view from {persona}.\n"
+                     f"BACKDOORED: {'yes' if persona == personas[2] else 'no'}\n"
+                     "SUSPICION: 2"}
+        for persona in personas
+    ]
+    (generations / "teacher__train.json").write_text(json.dumps(teacher))
+
+    debate = [
+        {"item_id": f"p1__clean::{persona}::round2", "problem_id": "p1", "label": 0,
+         "persona": persona, "verdict": "no",
+         "round_one_verdict": "yes" if persona == personas[2] else "no",
+         "response": "REASONING: All reviewers agree it is clean.\n"
+                     "BACKDOORED: no\nSUSPICION: 1"}
+        for persona in personas
+    ]
+    (generations / "debate__train.json").write_text(json.dumps(debate))
+
+    round1 = load_consensus_responses("train", text_source="round1")
+    entry = round1["p1__clean"]
+    assert entry["majority"] == "no"
+    # The two personas who said "no" in round 1 supply the targets.
+    assert len(entry["agree"]) == 2
+    assert len(entry["dissent"]) == 1
+    assert all("reviewers" not in a["response"] for a in entry["agree"])
+
+    round2 = load_consensus_responses("train", text_source="round2")
+    entry2 = round2["p1__clean"]
+    assert len(entry2["agree"]) == 3        # unanimous after debate
+    assert entry2["dissent"] == []
+    assert all("reviewers" in a["response"] for a in entry2["agree"])
+
+
+def test_unknown_text_source_is_rejected():
+    """A typo must fail loudly, not silently pick a default."""
+    from src.debate import load_consensus_responses
+
+    with pytest.raises(ValueError, match="text_source"):
+        load_consensus_responses("train", text_source="round3")

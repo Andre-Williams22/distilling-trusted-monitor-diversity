@@ -28,6 +28,7 @@ import math
 import re
 import time
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -441,7 +442,58 @@ def tokenise_example(
 # --------------------------------------------------------------------------
 
 #: Training-target modes. The two ensemble modes differ only in the teacher.
-TARGET_MODES = ("ensemble", "m1-ensemble", "labels")
+TARGET_MODES = ("ensemble", "m1-ensemble", "labels", "consensus")
+
+
+def build_consensus_examples(
+    items: Sequence[Item],
+    consensus: dict[str, dict[str, Any]],
+    tokenizer: Any,
+    yes_ids: list[int],
+    no_ids: list[int],
+) -> tuple[list[SFTExample], list[str]]:
+    """Build M6's examples: every response that agreed with the debate majority.
+
+    MACA's MV-SFT trains on the winning traces, so an item contributes one
+    example per agreeing response rather than one per item -- which is why M6
+    sees roughly nine times the data MV-DPO got from the same debate
+    (ADR-0009). The response text is used verbatim as canonicalised by the
+    debate, so what M6 learns to emit is exactly what the majority wrote.
+
+    The KD target is the verdict as a hard 0/1. M6 runs with ``kd_weight=0``,
+    so it never enters the loss; it is set only to keep ``SFTExample``'s
+    contract intact for ``check_examples``.
+
+    Args:
+        items: The training items, labels blanked by the caller.
+        consensus: Output of ``debate.load_consensus_responses``.
+        tokenizer: The base model's tokenizer.
+        yes_ids: Token ids counted as "yes".
+        no_ids: Token ids counted as "no".
+
+    Returns:
+        ``(examples, dropped_item_ids)``.
+    """
+    examples: list[SFTExample] = []
+    dropped: list[str] = []
+    for item in items:
+        entry = consensus.get(item.item_id)
+        if not entry or not entry["agree"]:
+            dropped.append(item.item_id)
+            continue
+        kd_target = 1.0 if entry["majority"] == "yes" else 0.0
+        built = 0
+        for answer in entry["agree"]:
+            example = tokenise_example(
+                strip_label(item), answer["response"], kd_target,
+                tokenizer, yes_ids, no_ids,
+            )
+            if example is not None:
+                examples.append(example)
+                built += 1
+        if built == 0:
+            dropped.append(item.item_id)
+    return examples, dropped
 
 
 def load_ensemble_teacher(
@@ -1051,15 +1103,18 @@ def train(
     kd_weight: float | None = None,
     split: SplitName = "train",
     targets: str = "ensemble",
+    text_source: str = "round1",
 ) -> Path:
-    """Train M4 or M3 end to end. The entry point ``main.py train-sft`` calls.
+    """Train M4, M3 or M6 end to end. ``main.py train-sft`` calls this.
 
     ``targets="ensemble"`` trains M4 on M2's diverse ensemble.
     ``targets="m1-ensemble"`` trains M3 on M1's identical ensemble -- the
     baseline prompt sampled three times -- with every other setting identical,
     so M4 vs M3 isolates whether the teacher's *diversity* is what distils
     (ADR-0008). ``targets="labels"`` trains the excluded label-supervised
-    baseline (ADR-0007).
+    baseline (ADR-0007). ``targets="consensus"`` trains M6, MACA's MV-SFT, on
+    every debate response that agreed with the majority verdict, with
+    ``kd_weight`` forced to 0 (ADR-0009).
 
     A smoke run trains on the first ``SMOKE_ITEMS`` items for
     ``SMOKE_EPOCHS`` epochs with a small accumulation, so the optimizer takes
@@ -1071,8 +1126,10 @@ def train(
         kd_weight: Override ``config.SFT.kd_weight``. ``0.0`` is the declared
             fallback to plain text SFT.
         split: The split to train on. Only train is valid for a real run.
-        targets: ``"ensemble"`` (M4), ``"m1-ensemble"`` (M3) or ``"labels"``
-            (the excluded label baseline).
+        targets: ``"ensemble"`` (M4), ``"m1-ensemble"`` (M3), ``"labels"``
+            (the excluded label baseline) or ``"consensus"`` (M6, MV-SFT).
+        text_source: For ``"consensus"`` only: which debate text the majority
+            vote selects; see ``debate.load_consensus_responses``.
 
     Returns:
         The saved adapter directory.
@@ -1085,7 +1142,11 @@ def train(
 
     if targets not in TARGET_MODES:
         raise ValueError(f"targets must be one of {TARGET_MODES}, got {targets!r}")
-    arm = "m4" if targets == "ensemble" else "m3"
+    arm = {"ensemble": "m4", "consensus": "m6"}.get(targets, "m3")
+    # MACA's MV-SFT is plain cross-entropy on the winning traces. The KD term is
+    # M4's alone, so M6 vs M4 compares target *selection*, not two losses.
+    if targets == "consensus":
+        weight = 0.0
 
     all_items = load_split(split)
     items = label_training_items(all_items) if targets == "labels" else all_items
@@ -1099,7 +1160,19 @@ def train(
     examples: list[SFTExample] = []
     dropped: list[str] = []
     extra: dict[str, Any] = {}
-    if targets in ("ensemble", "m1-ensemble"):
+    if targets == "consensus":
+        from src.debate import load_consensus_responses
+
+        consensus = load_consensus_responses(split, text_source=text_source)
+        examples, dropped = build_consensus_examples(
+            items, consensus, tokenizer, yes_ids, no_ids
+        )
+        extra = {
+            "text_source": text_source,
+            "items_with_majority": len(consensus),
+            "responses_per_item": round(len(examples) / max(1, len(consensus)), 2),
+        }
+    elif targets in ("ensemble", "m1-ensemble"):
         teacher, personas = load_ensemble_teacher(targets, split)
         for item in items:
             example = build_sft_example(
@@ -1161,6 +1234,7 @@ def train(
         "ensemble": "m4-sft",
         "m1-ensemble": "m3-sft-m1-ensemble",
         "labels": "m3-sft-labels",
+        "consensus": "m6-maca-sft",
     }[targets]
     directory = run_dir(f"{name}-smoke" if smoke else name)
     adapter = save_run(

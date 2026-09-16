@@ -54,7 +54,12 @@ PRIMARY_READOUT = "logprob"
 #: Run order, which is also the order arms appear in every table and chart.
 #: M3 is the M1-distilled arm (ADR-0008). The earlier label-supervised M3 is
 #: excluded: a deployed trusted monitor has no attack labels (ADR-0007).
-ARM_ORDER = ("m0", "m1", "m2", "m3", "m4", "m5")
+ARM_ORDER = ("m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8")
+
+#: The preregistered primary analysis. M6-M8 are a secondary, exploratory
+#: family whose comparisons are Holm-corrected within the family (ADR-0009).
+PRIMARY_ARMS = ("m0", "m1", "m2", "m3", "m4", "m5")
+EXPLORATORY_ARMS = ("m6", "m7", "m8")
 
 #: Score at or above which an item counts as "flagged", per readout. Used only
 #: for the plain-language flag rates in the report, never for a metric.
@@ -77,6 +82,18 @@ COMPARISON_PAIRS = (
     ("m5", "m0"),
     ("m5", "m2"),
     ("m5", "m4"),
+    ("m6", "m4"),
+    ("m6", "m5"),
+    ("m7", "m4"),
+    ("m7", "m5"),
+    ("m8", "m4"),
+    ("m8", "m5"),
+)
+
+#: Comparisons belonging to the exploratory family (ADR-0009). Holm correction
+#: is applied across exactly these, and only these.
+EXPLORATORY_PAIRS = tuple(
+    pair for pair in COMPARISON_PAIRS if pair[0] in EXPLORATORY_ARMS
 )
 
 ARM_PURPOSE = {
@@ -97,6 +114,13 @@ ARM_PURPOSE = {
     "m5": "MACA's MV-DPO: the three personas debate for two rounds, and the model "
     "is trained to prefer reasoning that agreed with their majority verdict over "
     "reasoning that dissented. Does distilling deliberation beat distilling scores?",
+    "m6": "MACA's MV-SFT: plain cross-entropy on every response that agreed with "
+    "the debate majority. Unlike DPO it keeps unanimous items, so it trains on 9x "
+    "the data from the same debate (exploratory, ADR-0009).",
+    "m7": "MACA's MV-KTO: each response labelled desirable or dissenting on its "
+    "own, with no pairing, so unanimous items train too (exploratory, ADR-0009).",
+    "m8": "MACA's MV-GRPO: the model samples its own answers and is rewarded when "
+    "the verdict matches the debate majority (exploratory, ADR-0009).",
 }
 
 

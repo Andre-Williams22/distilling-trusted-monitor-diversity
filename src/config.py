@@ -320,6 +320,59 @@ class DPOConfig:
     max_pairs_per_item: int = 3
 
 
+@dataclass(frozen=True)
+class KTOConfig:
+    """M7-specific settings: MACA's MV-KTO (ADR-0009).
+
+    KTO labels each response on its own -- desirable if it agreed with the
+    debate majority, undesirable if it dissented -- so unanimous items still
+    train, unlike DPO's pairs. Our debate leaves 4,468 desirable against 240
+    undesirable, an 18.6:1 imbalance well outside KTO's recommended working
+    range, so ``undesirable_weight`` lifts the rare class back into it.
+
+    Attributes:
+        beta: KTO temperature, matching DPO's for comparability.
+        desirable_weight: Loss weight on agreeing responses.
+        undesirable_weight: Loss weight on dissenting responses. Chosen so
+            ``n_desirable * desirable_weight / (n_undesirable * weight)``
+            lands in KTO's recommended [1, 4/3] band; see
+            ``balanced_undesirable_weight``.
+        kl_batch_size: Mismatched prompt/response pairs used to estimate the
+            KL baseline term that KTO subtracts from each log-ratio.
+    """
+
+    beta: float = 0.1
+    desirable_weight: float = 1.0
+    undesirable_weight: float = 15.0
+    kl_batch_size: int = 8
+
+
+@dataclass(frozen=True)
+class GRPOConfig:
+    """M8-specific settings: MACA's MV-GRPO (ADR-0009).
+
+    The reward is frozen: a sampled completion scores 1 when its written
+    verdict matches the majority verdict from the debate already run, so no
+    re-debate happens inside the training loop.
+
+    Attributes:
+        group_size: Completions sampled per prompt; advantages are normalised
+            within the group.
+        temperature: Rollout sampling temperature.
+        max_new_tokens: Cap per completion, sized for the frozen output
+            contract (reasoning, verdict, score).
+        kl_weight: Penalty pulling the policy back to the adapter-disabled
+            reference.
+        clip_epsilon: PPO-style ratio clip.
+    """
+
+    group_size: int = 4
+    temperature: float = 1.0
+    max_new_tokens: int = 256
+    kl_weight: float = 0.04
+    clip_epsilon: float = 0.2
+
+
 # --------------------------------------------------------------------------
 # Arms
 # --------------------------------------------------------------------------
@@ -327,10 +380,13 @@ class DPOConfig:
 
 @dataclass(frozen=True)
 class Arm:
-    """One of the five configurations under comparison.
+    """One of the nine configurations under comparison.
+
+    M0-M5 are the preregistered primary analysis; M6-M8 are the secondary
+    MACA objective sweep (ADR-0009).
 
     Attributes:
-        name: Short id used in filenames and the scores table (``m0``..``m5``).
+        name: Short id used in filenames and the scores table (``m0``..``m8``).
         description: One line, for figures and logs.
         n_samples: Monitor calls per item at the headline operating point.
         prompts: Which prompt files this arm serves under. M2 uses the three
@@ -355,7 +411,10 @@ ARMS: tuple[Arm, ...] = (
     Arm("m2", "3 persona prompts, mean-aggregated", 1, PERSONA_PROMPTS, False, 3),
     Arm("m3", "Two-term SFT from M1", 1, (BASELINE_PROMPT,), True, 1),
     Arm("m4", "Two-term SFT from teacher scores", 1, (BASELINE_PROMPT,), True, 1),
-    Arm("m5", "DPO on consensus pairs", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m5", "MACA MV-DPO on consensus pairs", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m6", "MACA MV-SFT on majority responses", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m7", "MACA MV-KTO on labelled responses", 1, (BASELINE_PROMPT,), True, 1),
+    Arm("m8", "MACA MV-GRPO on majority reward", 1, (BASELINE_PROMPT,), True, 1),
 )
 
 #: Default instances. Stages take these as arguments rather than reaching for

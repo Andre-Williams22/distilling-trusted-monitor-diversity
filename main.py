@@ -24,6 +24,8 @@ Usage::
     python main.py teacher-scores --split train
     python main.py train-sft
     python main.py train-dpo
+    python main.py train-kto
+    python main.py train-grpo
     python main.py analyse
 """
 
@@ -34,7 +36,7 @@ import sys
 import time
 from collections.abc import Sequence
 
-ARM_CHOICES = ("m0", "m1", "m2", "m3", "m4", "m5")
+ARM_CHOICES = ("m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8")
 SPLIT_CHOICES = ("train", "val", "test")
 
 
@@ -126,7 +128,10 @@ def cmd_train_sft(args: argparse.Namespace) -> int:
     """Train M4 (diverse teacher) or M3 (identical teacher) with the two-term loss."""
     from src.train_sft import train
 
-    run = train(smoke=args.smoke, kd_weight=args.kd_weight, targets=args.targets)
+    run = train(
+        smoke=args.smoke, kd_weight=args.kd_weight, targets=args.targets,
+        text_source=args.text_source,
+    )
     print(f"run -> {run}")
     return 0
 
@@ -136,6 +141,24 @@ def cmd_train_dpo(args: argparse.Namespace) -> int:
     from src.train_dpo import train
 
     run = train(smoke=args.smoke)
+    print(f"run -> {run}")
+    return 0
+
+
+def cmd_train_kto(args: argparse.Namespace) -> int:
+    """Train M7 with MACA's MV-KTO on labelled debate answers (ADR-0009)."""
+    from src.train_kto import train
+
+    run = train(smoke=args.smoke, text_source=args.text_source)
+    print(f"run -> {run}")
+    return 0
+
+
+def cmd_train_grpo(args: argparse.Namespace) -> int:
+    """Train M8 with MACA's MV-GRPO against the majority verdict (ADR-0009)."""
+    from src.train_grpo import train
+
+    run = train(smoke=args.smoke, text_source=args.text_source)
     print(f"run -> {run}")
     return 0
 
@@ -248,17 +271,26 @@ def build_parser() -> argparse.ArgumentParser:
     add_resume_flag(sub)
 
     sub = add(
-        "train-sft", cmd_train_sft, "Train M4, or M3 with --targets m1-ensemble."
+        "train-sft", cmd_train_sft,
+        "Train M4; M3 with --targets m1-ensemble; M6 with --targets consensus.",
     )
     sub.add_argument(
         "--targets",
         default="ensemble",
-        choices=("ensemble", "m1-ensemble", "labels"),
+        choices=("ensemble", "m1-ensemble", "labels", "consensus"),
         help=(
             "ensemble: M4, distilled from M2's diverse ensemble. m1-ensemble: M3, "
             "distilled from M1's identical ensemble (ADR-0008). labels: the "
-            "excluded label-supervised baseline (ADR-0007)."
+            "excluded label-supervised baseline (ADR-0007). consensus: M6, "
+            "MACA's MV-SFT on the debate's winning answers (ADR-0009)."
         ),
+    )
+    sub.add_argument(
+        "--text-source",
+        default="round1",
+        choices=("round1", "round2"),
+        help="For --targets consensus: which debate text the vote selects "
+             "(ADR-0009).",
     )
     sub.add_argument(
         "--smoke",
@@ -279,6 +311,29 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument(
         "--smoke", action="store_true",
         help="Train on the first 20 pairs to prove the loop runs.",
+    )
+
+    sub = add("train-grpo", cmd_train_grpo, "Train M8 (MACA, MV-GRPO).")
+    sub.add_argument(
+        "--smoke", action="store_true",
+        help="Roll out a handful of prompts to prove the loop runs.",
+    )
+    sub.add_argument(
+        "--text-source", default="round1", choices=("round1", "round2"),
+        help="Which debate the vote comes from (ADR-0009).",
+    )
+
+    sub = add("train-kto", cmd_train_kto, "Train M7 (MACA, MV-KTO).")
+    sub.add_argument(
+        "--smoke", action="store_true",
+        help="Train on the first 40 answers to prove the loop runs.",
+    )
+    sub.add_argument(
+        "--text-source",
+        default="round1",
+        choices=("round1", "round2"),
+        help="Which debate text the majority vote selects (ADR-0009). "
+             "round1 is context-free; round2 mentions peers a solo monitor lacks.",
     )
 
     sub = add(
