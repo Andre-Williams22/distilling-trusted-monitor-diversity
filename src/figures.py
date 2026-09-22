@@ -56,11 +56,32 @@ ARM_COLORS = {
     "m2": "#1baf7a",
     "m3": "#eda100",
     "m4": "#e87ba4",
-    "m5": "#008300",
-    "m6": "#7b52d6",
-    "m7": "#00868f",
-    "m8": "#c2185b",
+    "m5": "#7b52d6",
+    "m6": "#8b5a2b",
+    "m7": "#c2185b",
+    "m8": "#00739e",
 }
+
+#: The benchmark every trained arm is measured against. In the faceted ROC it
+#: appears in both panels, so it is drawn as a neutral reference rather than a
+#: series -- which also keeps each panel's hue set inside the validated size.
+BENCHMARK_ARM = "m4"
+BENCHMARK_INK = "#4a4a48"
+
+#: Which arms each ROC panel carries. Nine overlapping curves cannot be read:
+#: eight of the nine arms sit inside a 0.12-wide pAUC band and three pairs are
+#: closer than the line width, so the chart is faceted by question instead.
+#: Every set here was checked with the palette validator (CVD, chroma,
+#: normal-vision separation and contrast), light and dark.
+ROC_PANELS = (
+    ("Can a 3x ensemble be distilled to 1x?", ("m0", "m2")),
+    ("Does MACA's vote survive distillation?", ("m5", "m7", "m8")),
+)
+
+#: Diverging pair for the ingredient-cost chart: gains and losses need opposite
+#: poles with a neutral zero, never one hue ramped by size.
+COST_GAIN = "#00739e"
+COST_LOSS = "#eb6834"
 
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
@@ -391,6 +412,196 @@ def plot_all_arms_roc(
     return _save(fig, path)
 
 
+def plot_roc_facets(
+    results: dict[str, ArmScores],
+    summaries: dict[str, dict[str, Any]],
+    path: Path,
+    context: str,
+) -> Path:
+    """Draw the ROC as two small multiples, one question per panel.
+
+    One chart cannot hold nine arms: eight of them sit inside a 0.12-wide pAUC
+    band, M1/M5 are 0.003 apart and M2/M3/M8 span 0.011, so those curves
+    overlap whatever colours they are given. Each panel therefore asks one
+    question and carries three or four curves, and M4 -- the benchmark both
+    questions are measured against -- is drawn in both as a neutral dashed
+    reference rather than a series.
+
+    Every curve is directly labelled at its right edge, which is also the
+    secondary encoding the palette check requires.
+
+    Args:
+        results: Primary-readout scores keyed by arm.
+        summaries: Primary ``summarize`` rows keyed by arm.
+        path: Destination file.
+        context: Setup and slice description.
+
+    Returns:
+        ``path``.
+    """
+    apply_style()
+    max_fpr = METRICS.pauc_max_fpr
+    # A panel with none of its arms scored is dropped rather than drawn empty,
+    # so a partial run (or a --limit smoke run) still renders.
+    panels = [(title, present) for title, arms in ROC_PANELS
+              if (present := [a for a in arms if a in results])]
+    if not panels:
+        raise ValueError("no panel has any of its arms scored")
+    fig, axes = plt.subplots(1, len(panels), figsize=(11.4, 4.9), squeeze=False)
+
+    for ax, (question, arms) in zip(axes[0], panels, strict=True):
+        _low_fpr_axes(ax, max_fpr)
+
+        labels: list[tuple[float, str, str]] = []
+        if BENCHMARK_ARM in results:
+            _roc_line(ax, results[BENCHMARK_ARM], color=BENCHMARK_INK,
+                      linewidth=1.8, linestyle=(0, (5, 2)), zorder=3)
+            labels.append((
+                _curve_end(results[BENCHMARK_ARM], max_fpr), BENCHMARK_INK,
+                f"{ARM_TITLES[BENCHMARK_ARM].split(' · ')[0]} (benchmark)",
+            ))
+
+        for arm in arms:
+            _roc_line(ax, results[arm], color=ARM_COLORS[arm], linewidth=2.2,
+                      zorder=4)
+            labels.append((
+                _curve_end(results[arm], max_fpr), ARM_COLORS[arm],
+                f"{ARM_TITLES[arm].split(' · ')[0]}  "
+                f"{summaries[arm]['pauc']:.3f}",
+            ))
+        _place_labels(ax, labels, max_fpr)
+        ax.set_title(question, fontsize=11, color=INK, pad=10, loc="left")
+
+    _figure_heading(
+        fig,
+        "Detection at low false-positive rates",
+        f"{context} · pAUC beside each arm · dashed line is M4, the benchmark",
+    )
+    return _save(fig, path)
+
+
+def _curve_end(result: ArmScores, max_fpr: float) -> float:
+    """True-positive rate where a curve leaves the plotted region.
+
+    Args:
+        result: The arm's scores and labels.
+        max_fpr: Right edge of the plotted region.
+
+    Returns:
+        The final in-region TPR, or 0.0 if the curve never enters it.
+    """
+    fpr, tpr = roc_curve(result.scores, result.labels)
+    inside = fpr <= max_fpr
+    return float(tpr[inside][-1]) if inside.any() else 0.0
+
+
+def _place_labels(
+    ax: plt.Axes, labels: Sequence[tuple[float, str, str]], max_fpr: float
+) -> None:
+    """Write each curve's name at its right edge, nudged apart where they clash.
+
+    Direct labelling is what lets a reader tell two curves apart without
+    matching colours to a legend box, and it is the secondary encoding the
+    palette validator asks for when a pair sits in the 6-8 CVD band. Arms whose
+    curves finish within a line-height of each other -- M5 and M8 do -- would
+    otherwise overprint, so the text is pushed apart while a leader dot stays
+    on the true endpoint.
+
+    Args:
+        ax: Target axes.
+        labels: ``(y, colour, text)`` per curve, any order.
+        max_fpr: Right edge of the plotted region, where the dots sit.
+    """
+    if not labels:
+        return
+    gap = 0.052
+    ordered = sorted(labels, key=lambda item: item[0])
+    placed: list[float] = []
+    for y, _colour, _text in ordered:
+        if placed and y - placed[-1] < gap:
+            y = placed[-1] + gap
+        placed.append(y)
+    # Keep the stack inside the axes if pushing up overflowed the top.
+    overflow = placed[-1] - 1.0
+    if overflow > 0:
+        placed = [y - overflow for y in placed]
+
+    for (true_y, colour, text), text_y in zip(ordered, placed, strict=True):
+        ax.plot([max_fpr], [true_y], marker="o", markersize=4.5, color=colour,
+                markeredgecolor=SURFACE, markeredgewidth=1.2, zorder=6,
+                clip_on=False)
+        ax.annotate(
+            text, xy=(max_fpr, text_y), xytext=(7, 0),
+            textcoords="offset points", va="center", ha="left", fontsize=9,
+            color=INK_SECONDARY, zorder=6, annotation_clip=False,
+        )
+
+
+def plot_ingredient_costs(
+    comparisons: Sequence[dict[str, Any]], path: Path, context: str
+) -> Path:
+    """Draw what each ingredient costs, as differences with 95% intervals.
+
+    A difference of 0.02 pAUC cannot be eyeballed off two overlapping ROC
+    curves, so the claims that rest on differences get the form that shows
+    them: one interval per comparison, a neutral zero rule, and opposite poles
+    for a gain and a loss.
+
+    Args:
+        comparisons: Rows from ``analysis.compare_arms`` with ``arm``,
+            ``baseline``, ``delta_pauc`` and its bootstrap interval.
+        path: Destination file.
+        context: Setup and slice description.
+
+    Returns:
+        ``path``.
+    """
+    apply_style()
+    wanted = {
+        ("m4", "m3"): "Teacher diversity\nM4 \u2212 M3: diverse vs identical ensemble",
+        ("m8", "m5"): "Dropping the vote\nM8 \u2212 M5: graded target vs MACA's vote",
+        ("m8", "m4"): "Adding the debate\nM8 \u2212 M4: debated vs undebated teacher",
+    }
+    rows = [(wanted[(c["arm"], c["baseline"])], c) for c in comparisons
+            if (c["arm"], c["baseline"]) in wanted]
+    if not rows:
+        raise ValueError("none of the ingredient comparisons were computed")
+    rows.reverse()
+
+    fig, ax = plt.subplots(figsize=(8.6, 0.78 * len(rows) + 1.7))
+    ax.axvline(0.0, color=MUTED, linewidth=1.2, zorder=2)
+
+    for index, (_label, row) in enumerate(rows):
+        delta = row["delta_pauc"]
+        low, high = row["delta_pauc_low"], row["delta_pauc_high"]
+        color = COST_GAIN if delta >= 0 else COST_LOSS
+        ax.plot([low, high], [index, index], color=color, linewidth=2.0,
+                solid_capstyle="round", zorder=3)
+        ax.plot([delta], [index], marker="o", markersize=9, color=color,
+                markeredgecolor=SURFACE, markeredgewidth=1.6, zorder=4)
+        crosses = low <= 0 <= high
+        ax.annotate(
+            f"{delta:+.3f}  [{low:+.3f}, {high:+.3f}]"
+            + ("  spans zero" if crosses else ""),
+            xy=(high, index), xytext=(10, 0), textcoords="offset points",
+            va="center", ha="left", fontsize=9.5,
+            color=INK if not crosses else MUTED, zorder=5,
+        )
+
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([label for label, _ in rows], fontsize=9.5,
+                       color=INK_SECONDARY)
+    ax.set_xlabel("Change in pAUC@10% FPR", color=INK_SECONDARY)
+    ax.margins(x=0.34, y=0.42)
+    ax.grid(axis="y", visible=False)
+    ax.tick_params(axis="y", length=0, pad=6)
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    _heading(ax, "What each ingredient is worth",
+             f"{context} · 95% paired-bootstrap intervals")
+    return _save(fig, path)
+
+
 def plot_metric_intervals(
     summaries: dict[str, dict[str, Any]], path: Path, context: str
 ) -> Path:
@@ -601,8 +812,11 @@ def plot_pauc_bars(
         ax.text(row["pauc_high"] + 0.012, y, value, va="center", ha="left",
                 fontsize=9.5, color=INK, zorder=4)
 
-    run_order = ("m0", "m1", "m2", "m3", "m4", "m5")
-    arms_present = [arm for arm in run_order if any(r["arm"] == arm for r in monitors)]
+    # Derived, never hardcoded: a literal list here silently dropped M6-M8
+    # from the key while their bars were still drawn.
+    arms_present = [
+        arm for arm in ARM_COLORS if any(r["arm"] == arm for r in monitors)
+    ]
     handles = [
         Patch(facecolor=ARM_COLORS[arm], label=ARM_TITLES[arm]) for arm in arms_present
     ]
@@ -624,6 +838,7 @@ def render_all(
     out_dir: Path,
     context: str,
     monitors: Sequence[dict[str, Any]] = (),
+    comparisons: Sequence[dict[str, Any]] = (),
 ) -> dict[str, list[tuple[str, str]]]:
     """Draw every figure the report uses.
 
@@ -633,6 +848,8 @@ def render_all(
         out_dir: Where to write the ``.png`` files.
         context: Setup and slice description for subtitles.
         monitors: Rows from ``analysis.monitor_rows``, for the ranked bars.
+        comparisons: Primary-readout rows from ``analysis.compare_arms``, for
+            the ingredient-cost chart.
 
     Returns:
         ``{"<arm>" | "comparison": [(path relative to the report, caption)]}``.
@@ -665,15 +882,48 @@ def render_all(
     primary_rows = {arm: by_arm[arm][PRIMARY_READOUT] for arm in primary}
     comparison: list[tuple[str, str]] = []
 
+    facets = None
+    if len(primary) >= 2:
+        try:
+            facets = plot_roc_facets(
+                primary, primary_rows, out_dir / "roc_facets.png", context
+            )
+        except ValueError:
+            facets = None
+    if facets is not None:
+        comparison.append((
+            f"figures/{facets.name}",
+            "ROC at false-positive rates up to 10%, split by question. M4, the "
+            "benchmark both questions are measured against, is the dashed line "
+            "in each panel.",
+        ))
+
     if len(primary) >= 2:
         roc = plot_all_arms_roc(
             primary, primary_rows, out_dir / "all_arms_roc.png", context
         )
         comparison.append((
             f"figures/{roc.name}",
-            "Every arm's ROC curve at false-positive rates up to 10%, with "
-            "individual ensemble members in grey.",
+            "Reference view: every arm on one chart, with individual ensemble "
+            "members in grey. Curves overlap heavily -- the faceted version "
+            "above is the readable one.",
         ))
+
+    cost_rows = [c for c in comparisons if c.get("readout") == PRIMARY_READOUT]
+    if cost_rows:
+        try:
+            costs = plot_ingredient_costs(
+                cost_rows, out_dir / "ingredient_costs.png", context
+            )
+        except ValueError:
+            costs = None
+        if costs is not None:
+            comparison.append((
+                f"figures/{costs.name}",
+                "What each ingredient is worth, as a difference with its 95% "
+                "interval. Differences this small cannot be read off "
+                "overlapping ROC curves.",
+            ))
 
     if len(monitors) >= 2:
         bars = plot_pauc_bars(monitors, out_dir / "pauc_bars.png", context)

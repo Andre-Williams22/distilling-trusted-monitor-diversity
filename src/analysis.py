@@ -860,7 +860,7 @@ def run_analysis(
     setup = describe_setup(list(primary.values()))
     context = f"{setup} · {describe_slice(split, limit)}"
     figure_entries = figures.render_all(
-        loaded, summaries, out_dir / "figures", context, monitors
+        loaded, summaries, out_dir / "figures", context, monitors, comparisons
     )
 
     report = render_report(

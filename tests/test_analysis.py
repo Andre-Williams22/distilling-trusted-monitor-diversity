@@ -208,3 +208,16 @@ def test_fpr_table_ranks_by_pauc_and_carries_cost(tmp_path):
     assert {row["arm"]: row["inference_cost"] for row in rows} == {"m0": "1", "m1": "3"}
     assert "recall_at_1pct_fpr" in rows[0]
     assert (tmp_path / "results" / "val" / "figures" / "pauc_bars.png").exists()
+
+
+def test_bar_legend_covers_every_arm_drawn():
+    """The colour key is derived from the palette, never a hardcoded arm list.
+
+    Guards a real defect: the legend was built from a literal ("m0".."m5"), so
+    M6, M7 and M8 were drawn as bars but missing from the key.
+    """
+    from src.analysis import ARM_ORDER
+    from src.figures import ARM_COLORS, ARM_TITLES
+
+    assert set(ARM_ORDER) <= set(ARM_COLORS), "an arm has no colour"
+    assert set(ARM_ORDER) <= set(ARM_TITLES), "an arm has no title"

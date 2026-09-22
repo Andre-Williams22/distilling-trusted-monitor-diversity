@@ -1,6 +1,6 @@
 # Monitor distillation results — val split
 
-**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-16 09:07 · commit `72817d2` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-21 17:16 · commit `528019f` with uncommitted changes
 
 ## Summary
 
@@ -98,9 +98,17 @@ Both arms scored on the same items. ΔpAUC from a paired bootstrap; ΔAUROC and 
 
 ## Across arms and monitors
 
-![Every arm's ROC curve at false-positive rates up to 10%, with individual ensemble members in grey.](figures/all_arms_roc.png)
+![ROC at false-positive rates up to 10%, split by question. M4, the benchmark both questions are measured against, is the dashed line in each panel.](figures/roc_facets.png)
 
-*Every arm's ROC curve at false-positive rates up to 10%, with individual ensemble members in grey.*
+*ROC at false-positive rates up to 10%, split by question. M4, the benchmark both questions are measured against, is the dashed line in each panel.*
+
+![Reference view: every arm on one chart, with individual ensemble members in grey. Curves overlap heavily -- the faceted version above is the readable one.](figures/all_arms_roc.png)
+
+*Reference view: every arm on one chart, with individual ensemble members in grey. Curves overlap heavily -- the faceted version above is the readable one.*
+
+![What each ingredient is worth, as a difference with its 95% interval. Differences this small cannot be read off overlapping ROC curves.](figures/ingredient_costs.png)
+
+*What each ingredient is worth, as a difference with its 95% interval. Differences this small cannot be read off overlapping ROC curves.*
 
 ![pAUC for every arm and every monitor inside an ensemble, with 95% intervals. Lighter bars are an ensemble's individual members.](figures/pauc_bars.png)
 

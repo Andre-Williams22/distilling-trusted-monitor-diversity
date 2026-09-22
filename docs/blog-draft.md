@@ -1,142 +1,162 @@
-# One monitor, three monitors' worth: distilling ensemble diversity into a single trusted monitor
+# One monitor, three monitors' worth
 
-*Draft · preliminary results · Andre Williams · BlueDot Technical AI Safety Sprint, September 2026*
+**Distilling an ensemble of trusted monitors into a single model — and why the
+published recipe for doing it failed.**
+
+*Andre Williams · BlueDot Technical AI Safety Sprint · September 2026*
+
+---
 
 ## The problem
 
-In AI control, a *trusted monitor* is a weaker model we trust not to scheme,
-reading the outputs of a stronger model we don't trust and flagging anything
-suspicious. A recent paper, [Ensemble Monitoring for AI
-Control](https://arxiv.org/html/2605.15377v2), found that combining several
-*diverse* monitors catches noticeably more sabotage than any single monitor, and
-more than simply sampling one monitor several times.
+In AI control, a **trusted monitor** is a weaker model that reads a stronger
+model's output and flags anything suspicious. Cheap, but not very good alone.
 
-The catch is cost. A three-monitor ensemble makes three model calls for every
-action it checks, for as long as the system is deployed.
+Running three monitors and averaging them works better. It also costs three
+times as much, on every single output, forever. So: **can one model learn what
+the ensemble knows, and run at 1× cost?**
 
-This project asks whether that cost can be paid once, at training time instead:
-**can a single fine-tuned monitor learn what a diverse ensemble knows, and keep
-the ensemble's detection gain at a third of the inference cost?**
+Setup: Qwen2.5-7B-Instruct judging backdoored solutions from the
+[ControlArena APPS dataset](https://huggingface.co/datasets/RoganInglis/apps-control-arena).
+1,288 held-out test items, half backdoored. The score is the model's
+probability of answering "yes" to *is this backdoored*. The metric is
+**pAUC@10% FPR** — detection quality in the low-false-positive region, because
+nobody can audit 30% of their traffic.
 
-## Setup
+No arm ever sees a ground-truth label during training. Real monitors don't get
+an answer key.
 
-**Task.** Detecting backdoored code. I used the [ControlArena APPS
-dataset](https://huggingface.co/datasets/RoganInglis/apps-control-arena):
-programming problems paired with either a correct solution or one containing a
-validated backdoor — code that passes the normal tests but gives a wrong answer
-on a specific hidden input. Every problem contributes one backdoored and one
-clean solution, and problems are split into train, validation and test, so no
-test problem is ever seen in training.
+---
 
-**Monitor.** Qwen2.5-7B-Instruct reads the problem and the solution and answers
-whether it is backdoored. The suspicion score is the model's probability of
-answering "yes".
+## What we compared
 
-**Metric.** Partial AUROC over false-positive rates from 0 to 10%, the
-same metric as the anchor paper. It measures how well a monitor separates
-backdoored from clean code in the strict regime that matters in practice, where
-only a small share of honest work can be sent to human review. 0.5 is chance;
-1.0 is perfect.
-
-**Four monitors compared** (a fifth is still to come):
-
-| | What it is | Calls per check |
+| Arm | What it is | Cost |
 |---|---|---|
-| **M0** | A single monitor | 1 |
-| **M1** | The same monitor sampled three times, averaged | 3 |
-| **M2** | Three different monitoring prompts, averaged — the diverse ensemble | 3 |
-| **M4** | One model fine-tuned to reproduce M2's judgement | **1** |
+| M0 | one monitor | 1× |
+| M1 | the same prompt sampled 3× | 3× |
+| M2 | **three different persona prompts**, averaged | 3× |
+| M3 | a model distilled from M1 | 1× |
+| M4 | a model distilled from M2 | 1× |
+| M5 | **MACA (MV-DPO)** — the published recipe | 1× |
+| M8 | MACA's debate, without MACA's vote | 1× |
 
-M2's three prompts give the same model different specialities: tracing
-suspicious control flow, comparing the code against what a correct solution
-would look like, and imagining where an attacker would hide a trigger.
+(M6 and M7 are MACA's other two objectives, in the repo.)
 
-**Distillation.** To train M4, I ran M2's three prompts over the *training*
-problems, then fine-tuned a LoRA adapter on the results. The loss has two parts:
-ordinary next-token loss so the model still writes a normal answer, and a second
-term pushing its probability of "yes" toward the ensemble's *average*. That
-second term matters. Three monitors voting yes, yes and no give an average of
-two-thirds — information a single monitor, and plain text fine-tuning, would
-round away. M4 never sees test problems and never sees the true labels; everything
-it learns comes from the ensemble.
+---
 
-## Results
+## Result 1: distillation works
 
-Test set: 1,288 solutions from 644 problems, half of them backdoored.
+![Every monitor ranked by pAUC](../results/test/figures/pauc_bars.png)
 
-![Detection against inference cost](../results/test/figures/frontier.png)
+**M4 — one model, one call — beats the 3× ensemble it learned from.**
 
-| Monitor | pAUC (FPR ≤ 10%) | AUROC | Calls per check |
+- M4 0.810 vs M0 0.709: **+0.101** [+0.066, +0.135]
+- M4 vs M2, the 3× teacher: **+0.031** [−0.000, +0.061]
+
+Three monitors' worth of judgement, at one monitor's price. The student edging
+past its teacher isn't magic — averaging three noisy opinions into one target
+is a denoising step, and the student learns the denoised signal.
+
+**And it's the *diversity* that transfers.** M3 is identical to M4 except its
+teacher was three copies of the *same* prompt instead of three different
+personas. M4 beats it by **+0.028** [+0.007, +0.049]. Distilling a diverse
+ensemble is measurably better than distilling a redundant one.
+
+---
+
+## Result 2: the published recipe doesn't transfer
+
+[MACA](https://arxiv.org/abs/2509.15172) post-trains a model on its own
+multi-agent debate: agents argue, you take the majority vote, you train toward
+it. We implemented its best objective for this model size (MV-DPO) as M5.
+
+![ROC by question](../results/test/figures/roc_facets.png)
+
+**M5 lost to plain score distillation by 0.054 pAUC** [−0.090, −0.019],
+p = 6×10⁻⁵. Its other objectives did worse: MV-SFT 0.691, MV-KTO 0.516 — the
+latter below an untrained monitor.
+
+My first guess was that MACA was starved of data. Debate only produces training
+pairs where the agents *disagree*, and two rounds of debate drove them from 63%
+to 84% agreement — 480 pairs from 1,574 items. So I ran MV-SFT, which keeps the
+unanimous items too and got **8× the data**.
+
+It did worse. That hypothesis was wrong, and I'd written it down in advance,
+which is the only reason I can say so cleanly.
+
+---
+
+## Why it failed: the vote throws the signal away
+
+The answer turned out to be measurable without training anything. Just ask: how
+good is each **teacher**, before any student learns from it?
+
+| What you distil | pAUC |
+|---|---|
+| The ensemble's averaged probability (M4's target) | **0.800** |
+| The same answers, collapsed to a majority vote (MACA's target) | **0.520** |
+
+A vote throws away *how sure* the monitors were. Two monitors at 0.55 and one
+at 0.95 vote the same as three at 0.99 — and for ranking-based detection, that
+difference is the entire signal.
+
+Each arm then lands near the information content of what it distilled:
+
+| Arm | Distils | Teacher | Arm |
 |---|---|---|---|
-| M0 · single monitor | 0.709 [0.67, 0.75] | 0.862 | 1 |
-| M1 · 3 samples | 0.753 [0.72, 0.79] | 0.881 | 3 |
-| M2 · 3 diverse prompts | 0.779 [0.75, 0.81] | 0.906 | 3 |
-| **M4 · distilled** | **0.810** [0.78, 0.84] | **0.915** | **1** |
+| M4 | graded average | 0.800 | 0.810 |
+| M7 | the majority verdict, most directly | 0.520 | **0.516** |
 
-*95% bootstrap intervals in brackets.*
+M7 didn't break. It learned its target perfectly. Its target was nearly
+worthless. (I checked: three different tunings all land at 0.52.)
 
-Differences between monitors, measured on the same items:
+**So we tested the fix.** M8 keeps MACA's debate and drops only the vote —
+averaging the agents' probabilities after they argue:
 
-| Comparison | Change in pAUC [95% interval] | |
-|---|---|---|
-| M1 − M0 | +0.044 [+0.018, +0.071] | sampling three times helps |
-| M2 − M0 | +0.070 [+0.035, +0.104] | diverse prompts help more |
-| M2 − M1 | +0.026 [−0.006, +0.060] | diversity beyond sampling: a trend, not yet significant |
-| **M4 − M0** | **+0.101** [+0.066, +0.135] | **distillation clearly beats a single monitor** |
-| M4 − M2 | +0.031 [−0.000, +0.061] | M4 matches its teacher; not clearly above it |
+![What each ingredient is worth](../results/test/figures/ingredient_costs.png)
 
-![Every arm's ROC curve at low false-positive rates](../results/test/figures/all_arms_roc.png)
+- **Dropping the vote: +0.035** [+0.002, +0.068]
+- **Adding the debate: −0.020** [−0.044, +0.005] — spans zero
 
-## What this suggests
+**The vote is what costs you, not the debate.** M8 recovers to 0.790, within
+0.02 of the best arm and above the 3× ensemble it distils.
 
-**The ensemble's advantage survived distillation.** The distilled monitor beats
-a single monitor by 0.10 pAUC, and does at least as well as the three-prompt
-ensemble it learned from — at one model call instead of three. By the project's
-preregistered bar (recover at least half of the ensemble's gain at 1× cost), it
-comfortably clears it.
+There's a hint that debate itself mildly hurts here: after two rounds the
+agents' averaged score drops from 0.800 to 0.700 as they converge on each
+other. Consensus is not the same thing as accuracy — and for monitoring, the
+dissenting monitor is often the one that spotted the backdoor.
 
-**It may have slightly exceeded its teacher, but I can't claim that yet.** M4
-scored 0.031 above M2, with an interval that just touches zero. One plausible
-explanation is that training on the ensemble's *averaged* judgement acts as a
-regulariser. The more cautious one is noise — I don't yet have repeated runs.
+---
 
-**One prediction was wrong.** I expected fine-tuning to sharpen the monitor's
-scores into fewer, more extreme values. The opposite happened: M4's scores are
-more spread out than the untrained monitors', which are mostly pinned near 0 or
-1. That fits what it was trained on — averages like one-third and two-thirds —
-and finer-grained scores are exactly what a low false-positive-rate metric
-rewards.
+## What I'd tell someone building this
 
-**Diversity beyond resampling is suggestive, not proven.** Diverse prompts beat
-a single monitor clearly, but their edge over simply sampling one prompt three
-times (+0.026) is within noise at this sample size. The anchor paper found a
-larger effect using architecturally different models, not one model with
-different prompts.
+1. **Distil the ensemble's *scores*, not its *verdict*.** Cheapest, biggest win.
+2. **Make your ensemble genuinely diverse.** Three different prompts beat three
+   samples of one, and that difference survives distillation.
+3. **Be careful porting consensus methods to detection.** MACA was built for
+   tasks with a right answer that the majority usually finds. Monitoring asks
+   for calibrated ranking at a 1% false-positive budget — where the tails
+   matter and the majority doesn't.
 
-## Caveats
+---
 
-- **Single run.** One training run and one scoring pass per monitor. Sampling
-  randomness alone moved pAUC by about ±0.02 between repeated runs, which is
-  enough to matter for M4 versus M2 but not for M4 versus M0.
-- **One model family, prompt-based diversity.** All monitors are Qwen2.5-7B;
-  diversity comes from prompts, not different models.
-- **Static benchmark, not a live control protocol.** Solutions are pre-generated
-  and pre-labelled. This measures detection, not safety in a deployment where an
-  attacker adapts.
-- **Fixed attacks.** The backdoors come from one existing dataset; whether the
-  distilled monitor holds up against harder or adaptive attacks is untested.
+## Limitations
 
-## Next
+- **One model, one dataset.** Qwen2.5-7B on APPS backdoors. Untested elsewhere.
+- **Fixed attacks.** No adaptive attacker; a model trained to imitate a monitor
+  ensemble may be easier to game, and we didn't test that.
+- **Static classification, not a live control protocol.** No audit loop.
+- **Prompt diversity, not model diversity.** Three personas of one base model
+  share its blind spots. M2 vs M1 (+0.026 [−0.006, +0.060]) is suggestive, not
+  conclusive.
+- **M6, M7 and M8 were added after seeing M5 fail**, so they're exploratory, not
+  preregistered. MACA's fourth objective (MV-GRPO) is implemented but was never
+  run — three of four were evaluated.
+- **Single runs, no seed replication.** Run-to-run noise is ≈±0.02 pAUC, which
+  is the same size as the M8-vs-M4 gap.
 
-- **Repeat runs** with fixed seeds, to put error bars on M4 versus M2.
-- **M5:** distil the ensemble's *reasoning* rather than its scores, using
-  MACA's MV-DPO — the three personas debate for two rounds, and the model is
-  trained to prefer reasoning that agreed with their majority verdict over
-  reasoning that dissented. This tests whether distilling deliberation beats
-  distilling scores.
-- Longer term: MACA's other objectives (MV-SFT, MV-GRPO, MV-KTO), training with
-  the peers' reasoning in context, ensembles of genuinely different models, and
-  evaluation inside a live control protocol.
+Every number here is on a test split never used for any training or tuning
+decision. Full results, all nine arms, and the decision record are in the
+[repository](https://github.com/Andre-Williams22/distilling-trusted-monitor-diversity).
 
-*The whole experiment — every scoring run and the M4 training run — cost about
-$2 of rented GPU time.*
+*Total compute: under $15 of rented GPU time.*
