@@ -1,6 +1,6 @@
 # Monitor distillation results — test split
 
-**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-21 17:15 · commit `528019f` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-21 17:31 · commit `b874ac9` with uncommitted changes
 
 ## Summary
 

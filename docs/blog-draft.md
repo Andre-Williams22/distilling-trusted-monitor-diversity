@@ -46,9 +46,10 @@ an answer key.
 
 ## Result 1: distillation works
 
-![Every monitor ranked by pAUC](../results/test/figures/pauc_bars.png)
+![Detection vs inference cost](../results/test/figures/frontier.png)
 
-**M4 — one model, one call — beats the 3× ensemble it learned from.**
+Everything in the left column costs **1×**. The grey line is the 3× ensemble's
+score. **M4 — one model, one call — sits above it.**
 
 - M4 0.810 vs M0 0.709: **+0.101** [+0.066, +0.135]
 - M4 vs M2, the 3× teacher: **+0.031** [−0.000, +0.061]
@@ -160,3 +161,6 @@ decision. Full results, all nine arms, and the decision record are in the
 [repository](https://github.com/Andre-Williams22/distilling-trusted-monitor-diversity).
 
 *Total compute: under $15 of rented GPU time.*
+
+*The full ranking of all nine arms plus every individual monitor is in
+[`results/test/report.md`](../results/test/report.md).*

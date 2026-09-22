@@ -706,7 +706,8 @@ def plot_frontier(
     ax.set_xticks([0, 1], ["1× inference cost", "3× inference cost"])
     ax.grid(axis="x", visible=False)
     ax.set_ylabel("pAUC at FPR ≤ 10%")
-    ax.legend(loc="lower right", borderpad=0.8)
+    # No legend: every point is labelled where it sits, so a colour key would
+    # repeat the labels and cost a quarter of the plotting area.
     _heading(ax, "Detection vs. inference cost", context)
     return _save(fig, path)
 
