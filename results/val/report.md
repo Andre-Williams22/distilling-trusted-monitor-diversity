@@ -1,6 +1,6 @@
 # Monitor distillation results — val split
 
-**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-21 17:16 · commit `528019f` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-25 16:33 · commit `9fa005c` with uncommitted changes
 
 ## Summary
 
@@ -118,9 +118,13 @@ Both arms scored on the same items. ΔpAUC from a paired bootstrap; ΔAUROC and 
 
 *pAUC and AUROC per arm with 95% bootstrap intervals.*
 
-![pAUC against inference cost. The question is whether a 1× trained arm reaches the M2 ceiling.](figures/frontier.png)
+![pAUC against inference cost, headline arms only: does a 1× trained arm reach the 3× ceiling?](figures/frontier_headline.png)
 
-*pAUC against inference cost. The question is whether a 1× trained arm reaches the M2 ceiling.*
+*pAUC against inference cost, headline arms only: does a 1× trained arm reach the 3× ceiling?*
+
+![The same chart with every arm, as the full-detail view.](figures/frontier.png)
+
+*The same chart with every arm, as the full-detail view.*
 
 
 ## Each arm

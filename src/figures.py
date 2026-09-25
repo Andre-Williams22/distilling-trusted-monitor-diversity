@@ -78,6 +78,12 @@ ROC_PANELS = (
     ("Does MACA's vote survive distillation?", ("m5", "m7", "m8")),
 )
 
+#: The frontier's one job is "1x reaches the 3x ceiling". These five arms make
+#: that comparison and nothing else: both ensembles at 3x, the floor, the
+#: winner, and the published recipe it is contrasted with. Every other arm
+#: belongs to a later section that has its own figure.
+HEADLINE_ARMS = ("m0", "m1", "m2", "m4", "m5")
+
 #: Diverging pair for the ingredient-cost chart: gains and losses need opposite
 #: poles with a neutral zero, never one hue ramped by size.
 COST_GAIN = "#00739e"
@@ -650,7 +656,10 @@ def plot_metric_intervals(
 
 
 def plot_frontier(
-    summaries: dict[str, dict[str, Any]], path: Path, context: str
+    summaries: dict[str, dict[str, Any]],
+    path: Path,
+    context: str,
+    arms: Sequence[str] | None = None,
 ) -> Path:
     """Draw pAUC against inference cost -- the experiment's main figure.
 
@@ -662,11 +671,23 @@ def plot_frontier(
         summaries: Primary ``summarize`` rows keyed by arm.
         path: Destination file.
         context: Setup and slice description.
+        arms: Restrict to these arms, in ``HEADLINE_ARMS`` style. ``None``
+            draws every scored arm, which is the full-detail view for the
+            report -- nine points put six in the 1x column and the chart stops
+            making its one comparison legible.
 
     Returns:
         ``path``.
     """
     apply_style()
+    if arms is not None:
+        shown = {a: summaries[a] for a in arms if a in summaries}
+        # Say on the figure itself that arms were left out. It travels into
+        # write-ups on its own, where a silent subset would read as selection.
+        if len(shown) < len(summaries):
+            context = (f"{context} · {len(shown)} of {len(summaries)} arms shown"
+                       " · full chart in the report")
+        summaries = shown
     fig, ax = plt.subplots(figsize=(7.2, 4.8))
     positions = {1: 0.0, 3: 1.0}
     by_cost: dict[int, list[str]] = {}
@@ -937,12 +958,18 @@ def render_all(
     if len(primary) >= 2:
         metrics = plot_metric_intervals(primary_rows, out_dir / "metrics.png", context)
         frontier = plot_frontier(primary_rows, out_dir / "frontier.png", context)
+        headline = plot_frontier(
+            primary_rows, out_dir / "frontier_headline.png", context,
+            arms=HEADLINE_ARMS,
+        )
         comparison += [
             (f"figures/{metrics.name}",
              "pAUC and AUROC per arm with 95% bootstrap intervals."),
+            (f"figures/{headline.name}",
+             "pAUC against inference cost, headline arms only: does a 1× "
+             "trained arm reach the 3× ceiling?"),
             (f"figures/{frontier.name}",
-             "pAUC against inference cost. The question is whether a 1× trained "
-             "arm reaches the M2 ceiling."),
+             "The same chart with every arm, as the full-detail view."),
         ]
 
     if comparison:
