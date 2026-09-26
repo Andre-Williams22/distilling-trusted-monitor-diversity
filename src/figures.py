@@ -78,11 +78,13 @@ ROC_PANELS = (
     ("Does MACA's vote survive distillation?", ("m5", "m7", "m8")),
 )
 
-#: The frontier's one job is "1x reaches the 3x ceiling". These five arms make
-#: that comparison and nothing else: both ensembles at 3x, the floor, the
-#: winner, and the published recipe it is contrasted with. Every other arm
-#: belongs to a later section that has its own figure.
-HEADLINE_ARMS = ("m0", "m1", "m2", "m4", "m5")
+#: The frontier's one job is "1x reaches the 3x ceiling". These arms make that
+#: comparison: both ensembles at 3x, the floor, the two distilled arms and the
+#: published recipe at 1x. M3 earns its place against M4 -- same recipe, a
+#: redundant teacher instead of a diverse one -- so the diversity claim is
+#: visible here and not only in the ingredient chart. The remaining arms belong
+#: to later sections that have their own figures.
+HEADLINE_ARMS = ("m0", "m1", "m2", "m3", "m4", "m5")
 
 #: Diverging pair for the ingredient-cost chart: gains and losses need opposite
 #: poles with a neutral zero, never one hue ramped by size.
@@ -608,6 +610,76 @@ def plot_ingredient_costs(
     return _save(fig, path)
 
 
+def plot_roc_small_multiples(
+    results: dict[str, ArmScores],
+    summaries: dict[str, dict[str, Any]],
+    path: Path,
+    context: str,
+    arms: Sequence[str] = HEADLINE_ARMS,
+) -> Path:
+    """Draw one ROC panel per arm, each against its peers in grey.
+
+    Six curves cannot share one axes: crossing lines are an all-pairs case, and
+    the categorical palette validates all-pairs for **three** series at most --
+    past that no ordering of any hue set clears the separation floors, and the
+    documented fix is to facet. Small multiples do exactly that while still
+    showing every arm in a single image: each panel colours one arm and greys
+    the rest, so a colour never has to be told apart from another colour.
+
+    The grey backdrop is what makes the panels comparable -- each arm is read
+    against the same five peers, in the same place, at the same scale.
+
+    Args:
+        results: Primary-readout scores keyed by arm.
+        summaries: Primary ``summarize`` rows keyed by arm.
+        path: Destination file.
+        context: Setup and slice description.
+        arms: Which arms get a panel, in reading order.
+
+    Returns:
+        ``path``.
+    """
+    apply_style()
+    max_fpr = METRICS.pauc_max_fpr
+    present = [arm for arm in arms if arm in results]
+    if not present:
+        raise ValueError("none of the requested arms were scored")
+
+    columns = 3
+    rows = -(-len(present) // columns)  # ceil without importing math
+    fig, axes = plt.subplots(
+        rows, columns, figsize=(3.7 * columns, 3.25 * rows),
+        squeeze=False, sharex=True, sharey=True,
+    )
+    flat = [ax for row in axes for ax in row]
+
+    for ax, arm in zip(flat, present, strict=False):
+        _low_fpr_axes(ax, max_fpr)
+        for other in present:
+            if other != arm:
+                _roc_line(ax, results[other], color=GRIDLINE, linewidth=1.3,
+                          zorder=2)
+        _roc_line(ax, results[arm], color=ARM_COLORS[arm], linewidth=2.4,
+                  zorder=4)
+        ax.set_title(
+            f"{ARM_TITLES[arm]}   pAUC {summaries[arm]['pauc']:.3f}",
+            fontsize=9.5, color=INK, pad=7, loc="left",
+        )
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+
+    for ax in flat[len(present):]:
+        ax.set_visible(False)
+
+    fig.supxlabel("False positive rate", color=INK_SECONDARY, fontsize=10)
+    fig.supylabel("True positive rate", color=INK_SECONDARY, fontsize=10)
+    _figure_heading(
+        fig, "Each arm against the others",
+        f"{context} · the highlighted arm in colour, its peers in grey",
+    )
+    return _save(fig, path)
+
+
 def plot_metric_intervals(
     summaries: dict[str, dict[str, Any]], path: Path, context: str
 ) -> Path:
@@ -921,14 +993,21 @@ def render_all(
         ))
 
     if len(primary) >= 2:
-        roc = plot_all_arms_roc(
+        grid = plot_roc_small_multiples(
             primary, primary_rows, out_dir / "all_arms_roc.png", context
         )
         comparison.append((
-            f"figures/{roc.name}",
-            "Reference view: every arm on one chart, with individual ensemble "
-            "members in grey. Curves overlap heavily -- the faceted version "
-            "above is the readable one.",
+            f"figures/{grid.name}",
+            "One panel per arm: the highlighted arm in colour against its peers "
+            "in grey. Six curves cannot share one axes, so each gets its own.",
+        ))
+        crowded = plot_all_arms_roc(
+            primary, primary_rows, out_dir / "all_arms_roc_single.png", context
+        )
+        comparison.append((
+            f"figures/{crowded.name}",
+            "The same arms on one axes, kept for reference. Curves overlap "
+            "heavily -- this is why the panels above exist.",
         ))
 
     cost_rows = [c for c in comparisons if c.get("readout") == PRIMARY_READOUT]

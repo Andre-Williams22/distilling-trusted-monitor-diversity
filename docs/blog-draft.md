@@ -49,8 +49,8 @@ an answer key.
 ![Detection vs inference cost](../results/test/figures/frontier_headline.png)
 
 Everything in the left column costs **1×**. The grey line is the 3× ensemble's
-score. **M4 — one model, one call — sits above it.** (Five arms shown; the
-other four belong to the sections below.)
+score. **M4 — one model, one call — sits above it**, and so does M3. (Six arms
+shown; the other three belong to the sections below.)
 
 - M4 0.810 vs M0 0.709: **+0.101** [+0.066, +0.135]
 - M4 vs M2, the 3× teacher: **+0.031** [−0.000, +0.061]

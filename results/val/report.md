@@ -1,6 +1,6 @@
 # Monitor distillation results — val split
 
-**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-25 16:33 · commit `9fa005c` with uncommitted changes
+**Setup:** Qwen2.5-7B-Instruct, bf16 via vLLM · **Arms scored:** M0, M1, M2, M3, M4, M5, M6, M7, M8 · **Generated:** 2026-09-25 17:21 · commit `49e43b8` with uncommitted changes
 
 ## Summary
 
@@ -102,9 +102,13 @@ Both arms scored on the same items. ΔpAUC from a paired bootstrap; ΔAUROC and 
 
 *ROC at false-positive rates up to 10%, split by question. M4, the benchmark both questions are measured against, is the dashed line in each panel.*
 
-![Reference view: every arm on one chart, with individual ensemble members in grey. Curves overlap heavily -- the faceted version above is the readable one.](figures/all_arms_roc.png)
+![One panel per arm: the highlighted arm in colour against its peers in grey. Six curves cannot share one axes, so each gets its own.](figures/all_arms_roc.png)
 
-*Reference view: every arm on one chart, with individual ensemble members in grey. Curves overlap heavily -- the faceted version above is the readable one.*
+*One panel per arm: the highlighted arm in colour against its peers in grey. Six curves cannot share one axes, so each gets its own.*
+
+![The same arms on one axes, kept for reference. Curves overlap heavily -- this is why the panels above exist.](figures/all_arms_roc_single.png)
+
+*The same arms on one axes, kept for reference. Curves overlap heavily -- this is why the panels above exist.*
 
 ![What each ingredient is worth, as a difference with its 95% interval. Differences this small cannot be read off overlapping ROC curves.](figures/ingredient_costs.png)
 
